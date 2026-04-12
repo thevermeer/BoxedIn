@@ -39,8 +39,17 @@
   var headerFindingsByTab = new Map();
   var exfilEventsByTab = new Map();
   var injectFindingsByTab = new Map();
+  var techFindingsByTab = new Map();
+  var MAX_TECH_FINDINGS_PER_TAB = 100;
   var MAX_EXFIL_EVENTS_PER_TAB = 200;
   var MAX_HEADER_FINDINGS_PER_TAB = 100;
+
+  /** tabId -> array of captured request objects for the repeater. */
+  var capturedRequestsByTab = new Map();
+  /** requestId -> partial body/method data awaiting headers from onBeforeSendHeaders. */
+  var pendingBodiesByRequestId = new Map();
+  var MAX_CAPTURED_REQUESTS_PER_TAB = 100;
+  var MAX_PENDING_BODIES = 500;
 
   /** tabId -> Set of hostname strings (cleared when service worker restarts). */
   var observedHostsByTab = new Map();
@@ -958,14 +967,106 @@
       sendResponse({ ok: true });
       return true;
     }
+    if (msg && msg.type === "BOXEDIN_STORE_TECH_FINDING") {
+      var tfTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      if (tfTid >= 0 && msg.finding) {
+        var tFindings = techFindingsByTab.get(tfTid);
+        if (!tFindings) {
+          tFindings = [];
+          techFindingsByTab.set(tfTid, tFindings);
+        }
+        var dupTech = false;
+        for (var tdi = 0; tdi < tFindings.length; tdi++) {
+          if (tFindings[tdi].name === msg.finding.name) { dupTech = true; break; }
+        }
+        if (!dupTech && tFindings.length < MAX_TECH_FINDINGS_PER_TAB) {
+          tFindings.push(msg.finding);
+        }
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_GET_TECH_FINDINGS") {
+      var gtTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      sendResponse({ findings: techFindingsByTab.get(gtTid) || [] });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_RESET_EXFIL_EVENTS") {
+      var exRTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      if (exRTid >= 0) {
+        exfilEventsByTab.delete(exRTid);
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
     if (msg && msg.type === "BOXEDIN_REDTEAM_RESET") {
       var rTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
       if (rTid >= 0) {
         headerFindingsByTab.delete(rTid);
         exfilEventsByTab.delete(rTid);
         injectFindingsByTab.delete(rTid);
+        techFindingsByTab.delete(rTid);
+        capturedRequestsByTab.delete(rTid);
       }
       sendResponse({ ok: true });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_GET_CAPTURED_REQUESTS") {
+      var capTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      var reqs = capturedRequestsByTab.get(capTid) || [];
+      sendResponse({ requests: reqs });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_REPLAY_REQUEST") {
+      (function () {
+        var reqUrl = msg.url || "";
+        var reqMethod = (msg.method || "GET").toUpperCase();
+        var reqHeaders = {};
+        var rawHeaders = msg.headers || {};
+        var forbiddenHeaders = { "cookie": 1, "host": 1, "connection": 1, "content-length": 1 };
+        var hk = Object.keys(rawHeaders);
+        for (var hi = 0; hi < hk.length; hi++) {
+          if (!forbiddenHeaders[hk[hi].toLowerCase()]) {
+            reqHeaders[hk[hi]] = rawHeaders[hk[hi]];
+          }
+        }
+        var reqBody = msg.body || "";
+        var fetchOpts = {
+          method: reqMethod,
+          headers: reqHeaders,
+          credentials: "include",
+          redirect: "follow"
+        };
+        var skipBodyMethods = { GET: 1, HEAD: 1 };
+        if (!skipBodyMethods[reqMethod] && reqBody) {
+          fetchOpts.body = reqBody;
+        }
+        var startMs = Date.now();
+        fetch(reqUrl, fetchOpts).then(function (resp) {
+          var status = resp.status;
+          var statusText = resp.statusText;
+          var respHeaders = {};
+          resp.headers.forEach(function (val, key) {
+            respHeaders[key] = val;
+          });
+          return resp.text().then(function (bodyText) {
+            sendResponse({
+              ok: true,
+              status: status,
+              statusText: statusText,
+              headers: respHeaders,
+              body: bodyText.slice(0, 50000),
+              elapsedMs: Date.now() - startMs
+            });
+          });
+        }).catch(function (err) {
+          sendResponse({
+            ok: false,
+            error: String(err && err.message ? err.message : err),
+            elapsedMs: Date.now() - startMs
+          });
+        });
+      })();
       return true;
     }
     return false;
@@ -1004,6 +1105,50 @@
       chrome.webRequest.onBeforeRequest.addListener(
         function (details) {
           if (!extensionEnabled) return;
+          if (details.tabId >= 0 && details.requestBody) {
+            if (pendingBodiesByRequestId.size > MAX_PENDING_BODIES) {
+              pendingBodiesByRequestId.delete(pendingBodiesByRequestId.keys().next().value);
+            }
+            var bodyText = "";
+            var bodySize = 0;
+            if (details.requestBody.formData) {
+              var pfd = details.requestBody.formData;
+              var bPairs = [];
+              var pfKeys = Object.keys(pfd);
+              for (var pk = 0; pk < pfKeys.length; pk++) {
+                var pvals = pfd[pfKeys[pk]];
+                if (Array.isArray(pvals)) {
+                  for (var pv = 0; pv < pvals.length; pv++) {
+                    bodySize += String(pvals[pv]).length;
+                    bPairs.push(encodeURIComponent(pfKeys[pk]) + "=" + encodeURIComponent(pvals[pv]));
+                  }
+                }
+              }
+              bodyText = bPairs.join("&");
+            }
+            if (details.requestBody.raw) {
+              for (var rb = 0; rb < details.requestBody.raw.length; rb++) {
+                var rawBytes = details.requestBody.raw[rb].bytes;
+                if (rawBytes) bodySize += rawBytes.byteLength;
+              }
+              if (!bodyText) {
+                try {
+                  var rawChunks = [];
+                  for (var rc = 0; rc < details.requestBody.raw.length; rc++) {
+                    if (details.requestBody.raw[rc].bytes) {
+                      rawChunks.push(new TextDecoder().decode(details.requestBody.raw[rc].bytes));
+                    }
+                  }
+                  if (rawChunks.length > 0) bodyText = rawChunks.join("");
+                } catch (eBody) { /* ignore */ }
+              }
+            }
+            pendingBodiesByRequestId.set(details.requestId, {
+              method: details.method || "GET",
+              bodySize: bodySize,
+              bodyText: bodyText.slice(0, 50000)
+            });
+          }
           if (!captureHostsEnabled && !redteamEnabled) return;
           if (details.tabId < 0) return;
           try {
@@ -1022,26 +1167,9 @@
               }
             }
 
-            if (redteamEnabled && details.requestBody) {
-              var bodySize = 0;
-              if (details.requestBody.raw) {
-                for (var ri = 0; ri < details.requestBody.raw.length; ri++) {
-                  var bytes = details.requestBody.raw[ri].bytes;
-                  if (bytes) bodySize += bytes.byteLength;
-                }
-              }
-              if (details.requestBody.formData) {
-                var fd = details.requestBody.formData;
-                var fdKeys = Object.keys(fd);
-                for (var fi = 0; fi < fdKeys.length; fi++) {
-                  var vals = fd[fdKeys[fi]];
-                  if (Array.isArray(vals)) {
-                    for (var vi = 0; vi < vals.length; vi++) {
-                      bodySize += String(vals[vi]).length;
-                    }
-                  }
-                }
-              }
+            if (redteamEnabled) {
+              var pendingBody = pendingBodiesByRequestId.get(details.requestId);
+              var bodySize = pendingBody ? pendingBody.bodySize : 0;
               if (bodySize > 5000) {
                 var evts = exfilEventsByTab.get(details.tabId);
                 if (!evts) {
@@ -1078,40 +1206,65 @@
     try {
       chrome.webRequest.onBeforeSendHeaders.addListener(
         function (details) {
-          if (!extensionEnabled || !redteamEnabled) return;
+          if (!extensionEnabled) return;
           if (details.tabId < 0) return;
+
+          var allHeaders = {};
+          if (details.requestHeaders) {
+            for (var i = 0; i < details.requestHeaders.length; i++) {
+              var h = details.requestHeaders[i];
+              allHeaders[h.name] = h.value || "";
+            }
+          }
+
+          var pending = pendingBodiesByRequestId.get(details.requestId);
+          if (pending) pendingBodiesByRequestId.delete(details.requestId);
+          var captured = capturedRequestsByTab.get(details.tabId);
+          if (!captured) {
+            captured = [];
+            capturedRequestsByTab.set(details.tabId, captured);
+          }
+          if (captured.length < MAX_CAPTURED_REQUESTS_PER_TAB) {
+            captured.push({
+              url: details.url,
+              method: (pending && pending.method) || details.method || "GET",
+              headers: allHeaders,
+              body: (pending && pending.bodyText) || "",
+              ts: Date.now()
+            });
+          }
+
+          if (!redteamEnabled) return;
+          var authEntry = { url: details.url, ts: Date.now(), headers: {} };
+          if (details.requestHeaders) {
+            for (var ai = 0; ai < details.requestHeaders.length; ai++) {
+              var ah = details.requestHeaders[ai];
+              var lname = ah.name.toLowerCase();
+              if (lname === "cookie" || lname === "authorization" || lname === "x-csrf-token") {
+                authEntry.headers[lname] = ah.value || "";
+              }
+            }
+          }
           var findings = headerFindingsByTab.get(details.tabId);
           if (!findings) {
             findings = { reqHeaders: [], respHeaders: [], securityHeaders: {} };
             headerFindingsByTab.set(details.tabId, findings);
           }
-          if (findings.reqHeaders.length >= MAX_HEADER_FINDINGS_PER_TAB) return;
-          var entry = { url: details.url, ts: Date.now(), headers: {} };
-          var dominated = false;
-          if (details.requestHeaders) {
-            for (var i = 0; i < details.requestHeaders.length; i++) {
-              var h = details.requestHeaders[i];
-              var name = h.name.toLowerCase();
-              if (name === "cookie" || name === "authorization" || name === "x-csrf-token") {
-                entry.headers[name] = h.value || "";
+          if (Object.keys(authEntry.headers).length > 0 && findings.reqHeaders.length < MAX_HEADER_FINDINGS_PER_TAB) {
+            try {
+              var u = new URL(details.url);
+              if (u.protocol === "http:" && authEntry.headers["authorization"]) {
+                authEntry.authOverHttp = true;
               }
-            }
-            if (Object.keys(entry.headers).length > 0) {
-              try {
-                var u = new URL(details.url);
-                if (u.protocol === "http:" && entry.headers["authorization"]) {
-                  entry.authOverHttp = true;
-                }
-                if (entry.headers["authorization"]) {
-                  var av = entry.headers["authorization"];
-                  if (/^Bearer\s+eyJ/i.test(av)) entry.tokenType = "JWT";
-                  else if (/^Basic\s+/i.test(av)) entry.tokenType = "Basic";
-                  else if (/^Bearer\s+/i.test(av)) entry.tokenType = "Bearer";
-                  else entry.tokenType = "other";
-                }
-              } catch (eU) { /* ignore */ }
-              findings.reqHeaders.push(entry);
-            }
+              if (authEntry.headers["authorization"]) {
+                var av = authEntry.headers["authorization"];
+                if (/^Bearer\s+eyJ/i.test(av)) authEntry.tokenType = "JWT";
+                else if (/^Basic\s+/i.test(av)) authEntry.tokenType = "Basic";
+                else if (/^Bearer\s+/i.test(av)) authEntry.tokenType = "Bearer";
+                else authEntry.tokenType = "other";
+              }
+            } catch (eU) { /* ignore */ }
+            findings.reqHeaders.push(authEntry);
           }
         },
         { urls: ["*://*/*"] },
@@ -1140,6 +1293,49 @@
             injectFindingsByTab.set(details.tabId, inject);
           }
           if (!details.responseHeaders) return;
+          var techArr = techFindingsByTab.get(details.tabId);
+          if (!techArr) {
+            techArr = [];
+            techFindingsByTab.set(details.tabId, techArr);
+          }
+          var TECH_HEADER_MAP = {
+            "php": { category: "server", name: "PHP", notes: "Version disclosure, check for known CVEs" },
+            "express": { category: "server", name: "Express", notes: "Default error pages leak stack traces" },
+            "asp.net": { category: "server", name: "ASP.NET", notes: "ViewState deserialization, debug mode exposure" },
+            "nginx": { category: "server", name: "Nginx", notes: "Version disclosure, misconfiguration checks" },
+            "apache": { category: "server", name: "Apache", notes: "Version disclosure, mod_status/mod_info exposure" },
+            "cloudflare": { category: "server", name: "Cloudflare", notes: "CDN — origin IP may still be discoverable" },
+            "openresty": { category: "server", name: "OpenResty", notes: "Nginx-based, check for Lua script exposure" },
+            "iis": { category: "server", name: "IIS", notes: "Version disclosure, check for known CVEs" },
+            "gunicorn": { category: "server", name: "Gunicorn", notes: "Python WSGI server, check debug mode" },
+            "uvicorn": { category: "server", name: "Uvicorn", notes: "Python ASGI server, check debug mode" }
+          };
+
+          function pushTechIfNew(cat, tName, ver, ev, notes) {
+            for (var ti = 0; ti < techArr.length; ti++) {
+              if (techArr[ti].name === tName) return;
+            }
+            if (techArr.length < MAX_TECH_FINDINGS_PER_TAB) {
+              techArr.push({ category: cat, name: tName, version: ver, evidence: ev, attackNotes: notes || "" });
+            }
+          }
+
+          for (var hi = 0; hi < details.responseHeaders.length; hi++) {
+            var hdr = details.responseHeaders[hi];
+            var hName = hdr.name.toLowerCase();
+            var hVal = hdr.value || "";
+            if (hName === "x-powered-by" || hName === "server") {
+              var hLower = hVal.toLowerCase();
+              var thKeys = Object.keys(TECH_HEADER_MAP);
+              for (var tk = 0; tk < thKeys.length; tk++) {
+                if (hLower.indexOf(thKeys[tk]) !== -1) {
+                  var tm = TECH_HEADER_MAP[thKeys[tk]];
+                  pushTechIfNew(tm.category, tm.name, hVal, hName + " header", tm.notes);
+                }
+              }
+            }
+          }
+
           var secH = {};
           var setCookies = [];
           var corsOrigin = null;
@@ -1236,6 +1432,8 @@
       headerFindingsByTab.delete(tabId);
       exfilEventsByTab.delete(tabId);
       injectFindingsByTab.delete(tabId);
+      techFindingsByTab.delete(tabId);
+      capturedRequestsByTab.delete(tabId);
     });
   }
 

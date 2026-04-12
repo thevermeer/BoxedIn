@@ -20,14 +20,15 @@
   var pgFlushTimer = null;
 
   var cachedBlocksPayload = null;
-  var cachedAuthData = null;
   var cachedExfilEvents = [];
-  var cachedInjectData = null;
   var cachedPageGuardAuth = [];
   var exfilFilter = null;
 
+  var repeaterRoot = null;
+
   /* ── Page-guard stat flush ─────────────────────────────────────────── */
 
+  /** Batch-send accumulated page-guard block deltas to the background. */
   function flushPendingPageGuard() {
     pgFlushTimer = null;
     var li = pendingPg.linkedInBlocklist;
@@ -47,6 +48,10 @@
 
   /* ── Page-guard message handler (stats + red-team events) ──────────── */
 
+  /**
+   * Handle postMessage from page-guard (MAIN world): accumulate block-stat
+   * deltas, forward exfil/auth/inject findings to the background and caches.
+   */
   function onPageGuardMessage(ev) {
     try {
       if (ev.origin !== window.location.origin) return;
@@ -100,12 +105,23 @@
       if (activeTab === "inject") renderActivePanel();
       return;
     }
+
+    if (data.type === "tech") {
+      try {
+        chrome.runtime.sendMessage({
+          type: "BOXEDIN_STORE_TECH_FINDING", finding: data
+        }, function () { if (chrome.runtime.lastError) {} });
+      } catch (e) { /* ignore */ }
+      if (activeTab === "recon") renderActivePanel();
+      return;
+    }
   }
 
   window.addEventListener("message", onPageGuardMessage);
 
   /* ── Utility ───────────────────────────────────────────────────────── */
 
+  /** Detect dark mode via DOM class, data attribute, or media query. */
   function isDarkUi() {
     try {
       if (document.documentElement) {
@@ -117,6 +133,7 @@
     return false;
   }
 
+  /** Escape HTML entities in a string for safe innerHTML insertion. */
   function escapeHtml(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;")
@@ -125,10 +142,12 @@
       .replace(/"/g, "&quot;");
   }
 
+  /** Escape for use inside HTML attribute values (extends escapeHtml with single-quote). */
   function escapeAttr(s) {
     return escapeHtml(s).replace(/'/g, "&#39;");
   }
 
+  /** Format a unix-ms timestamp as a locale time string (HH:MM:SS). */
   function formatTime(ts) {
     if (!ts) return "";
     try {
@@ -137,6 +156,7 @@
     } catch (e) { return ""; }
   }
 
+  /** Persist the overlay view state (normal | collapsed | maximized) to storage. */
   function saveViewState(state) {
     viewState = state;
     try {
@@ -146,12 +166,14 @@
     } catch (e) { /* ignore */ }
   }
 
+  /** Apply the current viewState as CSS classes on the root element. */
   function applyViewState() {
     root.classList.remove("boxedin-stats--collapsed", "boxedin-stats--maximized");
     if (viewState === "collapsed") root.classList.add("boxedin-stats--collapsed");
     else if (viewState === "maximized") root.classList.add("boxedin-stats--maximized");
   }
 
+  /** Copy text to clipboard, falling back to execCommand if Clipboard API unavailable. */
   function copyTextToClipboard(text, onDone) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(onDone).catch(function () {
@@ -162,6 +184,7 @@
     fallbackCopyText(text, onDone);
   }
 
+  /** execCommand("copy") fallback for browsers without Clipboard API. */
   function fallbackCopyText(text, onDone) {
     try {
       var ta = document.createElement("textarea");
@@ -179,6 +202,7 @@
 
   /* ── Enable page-guard red-team ────────────────────────────────────── */
 
+  /** Signal the MAIN-world page-guard script to activate red-team hooks. */
   function enablePageGuardRedteam() {
     try {
       window.postMessage({ source: "boxedin-overlay", type: "enable-redteam" }, "*");
@@ -187,6 +211,7 @@
 
   /* ── Tab management ────────────────────────────────────────────────── */
 
+  /** Switch the active overlay tab, persist choice, and re-render. */
   function switchTab(tab) {
     activeTab = tab;
     try {
@@ -197,15 +222,18 @@
     renderActivePanel();
   }
 
+  /** Dispatch a fetch-and-render cycle for whichever tab is active. */
   function renderActivePanel() {
     if (activeTab === "blocks") fetchStats();
     else if (activeTab === "auth") fetchAuthAndRender();
     else if (activeTab === "exfil") fetchExfilAndRender();
     else if (activeTab === "inject") fetchInjectAndRender();
+    else if (activeTab === "recon") fetchReconAndRender();
   }
 
   /* ── Wire helpers ──────────────────────────────────────────────────── */
 
+  /** Bind the collapse/expand toggle button in the overlay header. */
   function wireToggle() {
     var btn = root.querySelector(".boxedin-stats__toggle");
     if (!btn) return;
@@ -219,6 +247,7 @@
     });
   }
 
+  /** Bind the maximize/restore button in the overlay header. */
   function wireMaximize() {
     var btn = root.querySelector(".boxedin-stats__maximize");
     if (!btn) return;
@@ -231,6 +260,7 @@
     });
   }
 
+  /** Bind click handlers on all tab buttons in the tab strip. */
   function wireTabs() {
     var tabs = root.querySelectorAll(".boxedin-stats__tab");
     for (var i = 0; i < tabs.length; i++) {
@@ -243,8 +273,23 @@
     }
   }
 
+  /** Bind the repeater pop-out button in the overlay header. */
+  function wireOpenRepeater() {
+    var btn = root.querySelector(".boxedin-stats__open-repeater");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      openRepeater({});
+    });
+  }
+
   /* ── Render shell (header + tabs + body) ───────────────────────────── */
 
+  /**
+   * Re-render the full overlay shell (header, tab strip, body).
+   * Preserves scroll position of .boxedin-stats__body across re-paints.
+   * @param {string} bodyHtml  Inner HTML for the body panel.
+   * @param {Object} [opts]    Options; set extensionDisabled to hide the overlay.
+   */
   function renderShell(bodyHtml, opts) {
     if (!root) return;
     opts = opts || {};
@@ -269,6 +314,9 @@
     if (activeTab === "blocks") {
       headerActions += '<button type="button" class="boxedin-stats__reset-stats" title="Clear cumulative DNR and page-guard block counts (this browser)">Reset stats</button>';
     }
+    if (redteamEnabled) {
+      headerActions += '<button type="button" class="boxedin-stats__open-repeater" title="Open request repeater">\u21C5</button>';
+    }
     headerActions +=
       '<button type="button" class="boxedin-stats__maximize" title="' +
       (maximized ? "Restore" : "Maximize") + '">' +
@@ -284,7 +332,8 @@
         { id: "blocks", label: "Blocks" },
         { id: "auth", label: "Auth" },
         { id: "exfil", label: "Exfil" },
-        { id: "inject", label: "Inject" }
+        { id: "inject", label: "Inject" },
+        { id: "recon", label: "Recon" }
       ];
       tabsHtml = '<div class="boxedin-stats__tabs">';
       for (var t = 0; t < tabDefs.length; t++) {
@@ -305,6 +354,7 @@
 
     wireToggle();
     wireMaximize();
+    wireOpenRepeater();
     if (redteamEnabled) wireTabs();
 
     var newBody = root.querySelector(".boxedin-stats__body");
@@ -313,6 +363,7 @@
 
   /* ── Blocks panel ──────────────────────────────────────────────────── */
 
+  /** Toggle a per-host DNR block rule via the background. */
   function toggleHostBlock(host, block) {
     try {
       chrome.runtime.sendMessage(
@@ -325,6 +376,7 @@
     } catch (e) { /* ignore */ }
   }
 
+  /** Ask the background to start recording unique hostnames for this tab. */
   function enableCaptureHosts() {
     try {
       chrome.runtime.sendMessage(
@@ -337,6 +389,7 @@
     } catch (e) { /* ignore */ }
   }
 
+  /** Split block rows into { network, sniff } for sectioned display. */
   function partitionBlockRows(rows) {
     var network = [];
     var sniff = [];
@@ -347,6 +400,7 @@
     return { network: network, sniff: sniff };
   }
 
+  /** Sum the .count field across an array of block rows. */
   function sumRowCounts(arr) {
     var s = 0;
     for (var j = 0; j < arr.length; j++) {
@@ -356,6 +410,10 @@
     return s;
   }
 
+  /**
+   * Build the Blocks panel HTML: DNR + page-guard rows split by category,
+   * optional hostname list with per-host block checkboxes.
+   */
   function buildBlocksBody(payload) {
     if (payload && payload.unavailable) {
       return '<p class="boxedin-stats__hint">' +
@@ -459,6 +517,7 @@
     return parts.join("");
   }
 
+  /** Attach event listeners for the Blocks panel (reset, host checkboxes, copy, enable). */
   function wireBlocksPanel(payload) {
     var hosts = (payload && payload.observedHosts) || [];
     var capOn = payload && payload.captureHostsEnabled;
@@ -527,6 +586,10 @@
 
   /* ── Auth panel ────────────────────────────────────────────────────── */
 
+  /**
+   * Build the Auth panel HTML from background audit data + page-guard
+   * findings, grouped into Critical / Warning / Info severity sections.
+   */
   function buildAuthBody(data) {
     if (!redteamEnabled) {
       return '<p class="boxedin-rt__disabled">Enable red-team tools in the BoxedIn options page.</p>';
@@ -634,15 +697,14 @@
     return parts.join("");
   }
 
+  /** Fetch auth audit data from the background and render the Auth panel. */
   function fetchAuthAndRender() {
     try {
       chrome.runtime.sendMessage({ type: "BOXEDIN_GET_AUTH_AUDIT" }, function (response) {
         if (chrome.runtime.lastError) {
-          cachedAuthData = null;
           if (activeTab === "auth") renderShell(buildAuthBody(null));
           return;
         }
-        cachedAuthData = response;
         if (activeTab === "auth") renderShell(buildAuthBody(response));
       });
     } catch (e) {
@@ -652,6 +714,10 @@
 
   /* ── Exfil panel ───────────────────────────────────────────────────── */
 
+  /**
+   * Build the Exfil panel HTML: filter buttons, clear button, and a
+   * reverse-chronological event stream with third-party alert highlighting.
+   */
   function buildExfilBody() {
     if (!redteamEnabled) {
       return '<p class="boxedin-rt__disabled">Enable red-team tools in the BoxedIn options page.</p>';
@@ -661,6 +727,7 @@
     var subtypes = ["fetch", "xhr", "clipboard-write", "clipboard-read", "websocket", "form-submit", "large-request"];
     var parts = [];
 
+    parts.push('<div class="boxedin-rt__exfil-toolbar">');
     parts.push('<div class="boxedin-rt__filters">');
     parts.push('<button type="button" class="boxedin-rt__filter' +
       (exfilFilter === null ? ' boxedin-rt__filter--active' : '') +
@@ -669,6 +736,10 @@
       parts.push('<button type="button" class="boxedin-rt__filter' +
         (exfilFilter === subtypes[fi] ? ' boxedin-rt__filter--active' : '') +
         '" data-filter="' + subtypes[fi] + '">' + escapeHtml(subtypes[fi]) + '</button>');
+    }
+    parts.push('</div>');
+    if (events.length > 0) {
+      parts.push('<button type="button" class="boxedin-rt__exfil-clear" title="Clear all exfil events for this tab">Clear</button>');
     }
     parts.push('</div>');
 
@@ -701,8 +772,11 @@
       var alertClass = isThirdParty ? " boxedin-rt__event--alert" : "";
       var display = evt.url || evt.preview || evt.action || "\u2014";
       if (evt.bodySize) display += " (" + Math.round(evt.bodySize / 1024) + " KB)";
+      var evtMethod = evt.method || "GET";
+      var evtUrl = evt.url || "";
       parts.push(
-        '<li class="boxedin-rt__event' + alertClass + '">' +
+        '<li class="boxedin-rt__event' + alertClass + '" data-rpt-url="' + escapeAttr(evtUrl) +
+        '" data-rpt-method="' + escapeAttr(evtMethod) + '">' +
         '<span class="boxedin-rt__event-type">' + escapeHtml(evt.subtype || "?") + '</span>' +
         '<span class="boxedin-rt__event-url">' + escapeHtml(display));
       if (isThirdParty && evtHost) {
@@ -718,7 +792,24 @@
     return parts.join("");
   }
 
+  /**
+   * Wire Exfil panel interactivity: clear button, subtype filter buttons,
+   * event-row click → open repeater with captured headers, allow-host buttons.
+   */
   function wireExfilPanel() {
+    var clearBtn = root.querySelector(".boxedin-rt__exfil-clear");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        cachedExfilEvents = [];
+        try {
+          chrome.runtime.sendMessage({ type: "BOXEDIN_RESET_EXFIL_EVENTS" }, function () {
+            if (chrome.runtime.lastError) { /* ignore */ }
+          });
+        } catch (e) { /* ignore */ }
+        if (activeTab === "exfil") renderActivePanel();
+      });
+    }
+
     var filters = root.querySelectorAll(".boxedin-rt__filter");
     for (var i = 0; i < filters.length; i++) {
       (function (btn) {
@@ -728,6 +819,37 @@
           if (activeTab === "exfil") renderActivePanel();
         });
       })(filters[i]);
+    }
+
+    var eventRows = root.querySelectorAll(".boxedin-rt__event[data-rpt-url]");
+    for (var er = 0; er < eventRows.length; er++) {
+      (function (row) {
+        row.style.cursor = "pointer";
+        row.addEventListener("click", function (ev) {
+          if (ev.target.classList.contains("boxedin-rt__allow-btn")) return;
+          var rptUrl = row.getAttribute("data-rpt-url");
+          var rptMethod = row.getAttribute("data-rpt-method") || "GET";
+          if (!rptUrl) { openRepeater({}); return; }
+          try {
+            chrome.runtime.sendMessage({ type: "BOXEDIN_GET_CAPTURED_REQUESTS" }, function (resp) {
+              var matched = null;
+              if (!chrome.runtime.lastError && resp && resp.requests) {
+                for (var mi = resp.requests.length - 1; mi >= 0; mi--) {
+                  if (resp.requests[mi].url === rptUrl) { matched = resp.requests[mi]; break; }
+                }
+              }
+              openRepeater({
+                url: rptUrl,
+                method: matched ? matched.method : rptMethod,
+                headers: matched ? matched.headers : {},
+                body: matched ? matched.body : ""
+              });
+            });
+          } catch (e) {
+            openRepeater({ url: rptUrl, method: rptMethod });
+          }
+        });
+      })(eventRows[er]);
     }
 
     var allowBtns = root.querySelectorAll(".boxedin-rt__allow-btn");
@@ -750,34 +872,40 @@
     }
   }
 
+  /** Re-render the Exfil panel while preserving .boxedin-rt__stream scroll. */
+  function exfilRenderWithScroll() {
+    var streamEl = root && root.querySelector(".boxedin-rt__stream");
+    var prevScroll = streamEl ? streamEl.scrollTop : 0;
+    renderShell(buildExfilBody());
+    wireExfilPanel();
+    var newStream = root && root.querySelector(".boxedin-rt__stream");
+    if (newStream && prevScroll) newStream.scrollTop = prevScroll;
+  }
+
+  /** Fetch exfil events from the background, merge with local cache, and render. */
   function fetchExfilAndRender() {
     try {
       chrome.runtime.sendMessage({ type: "BOXEDIN_GET_EXFIL_EVENTS" }, function (response) {
         if (chrome.runtime.lastError) {
-          if (activeTab === "exfil") {
-            renderShell(buildExfilBody());
-            wireExfilPanel();
-          }
+          if (activeTab === "exfil") exfilRenderWithScroll();
           return;
         }
         if (response && response.events && response.events.length > cachedExfilEvents.length) {
           cachedExfilEvents = response.events;
         }
-        if (activeTab === "exfil") {
-          renderShell(buildExfilBody());
-          wireExfilPanel();
-        }
+        if (activeTab === "exfil") exfilRenderWithScroll();
       });
     } catch (e) {
-      if (activeTab === "exfil") {
-        renderShell(buildExfilBody());
-        wireExfilPanel();
-      }
+      if (activeTab === "exfil") exfilRenderWithScroll();
     }
   }
 
   /* ── Inject panel ──────────────────────────────────────────────────── */
 
+  /**
+   * Build the Inject panel HTML: CSP analysis with directive table,
+   * CORS issues, CSRF form gaps, and XSS sink / reflected-param findings.
+   */
   function buildInjectBody(data) {
     if (!redteamEnabled) {
       return '<p class="boxedin-rt__disabled">Enable red-team tools in the BoxedIn options page.</p>';
@@ -887,15 +1015,14 @@
     return parts.join("");
   }
 
+  /** Fetch inject findings from the background and render the Inject panel. */
   function fetchInjectAndRender() {
     try {
       chrome.runtime.sendMessage({ type: "BOXEDIN_GET_INJECT_FINDINGS" }, function (response) {
         if (chrome.runtime.lastError) {
-          cachedInjectData = null;
           if (activeTab === "inject") renderShell(buildInjectBody(null));
           return;
         }
-        cachedInjectData = response;
         if (activeTab === "inject") renderShell(buildInjectBody(response));
       });
     } catch (e) {
@@ -903,8 +1030,92 @@
     }
   }
 
+  /* ── Recon panel ──────────────────────────────────────────────────── */
+
+  /**
+   * Build the Recon panel HTML from tech-stack findings grouped by
+   * category (CMS, Frameworks, Analytics, Server).
+   */
+  function buildReconBody(findings) {
+    if (!redteamEnabled) {
+      return '<p class="boxedin-rt__disabled">Enable red-team tools in the BoxedIn options page.</p>';
+    }
+    if (!findings || findings.length === 0) {
+      return '<p class="boxedin-rt__none">No tech-stack findings yet. Navigate to a site and reload to scan.</p>';
+    }
+
+    var groups = { cms: [], framework: [], analytics: [], server: [] };
+    for (var i = 0; i < findings.length; i++) {
+      var f = findings[i];
+      var cat = f.category || "server";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(f);
+    }
+
+    var groupMeta = [
+      { key: "cms", label: "CMS" },
+      { key: "framework", label: "Frameworks" },
+      { key: "analytics", label: "Analytics" },
+      { key: "server", label: "Server" }
+    ];
+
+    var parts = [];
+    for (var g = 0; g < groupMeta.length; g++) {
+      var gm = groupMeta[g];
+      var items = groups[gm.key];
+      if (!items || items.length === 0) continue;
+
+      parts.push(
+        '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">' +
+        escapeHtml(gm.label) +
+        '<span class="boxedin-rt__recon-count">' + items.length + '</span>' +
+        '</div>');
+
+      for (var j = 0; j < items.length; j++) {
+        var item = items[j];
+        var nameStr = escapeHtml(item.name || "Unknown");
+        if (item.version) nameStr += ' <span class="boxedin-rt__recon-version">' + escapeHtml(item.version) + '</span>';
+
+        parts.push(
+          '<div class="boxedin-rt__item">' +
+          '<span class="boxedin-rt__item-label">' + nameStr + '</span>' +
+          '<span class="boxedin-rt__recon-evidence">' + escapeHtml(item.evidence || "") + '</span>');
+
+        if (item.attackNotes) {
+          parts.push(
+            '<div class="boxedin-rt__item-detail">' + escapeHtml(item.attackNotes) + '</div>');
+        }
+        parts.push('</div>');
+      }
+
+      parts.push('</div>');
+    }
+
+    return parts.join("");
+  }
+
+  /** Fetch tech-stack findings from the background and render the Recon panel. */
+  function fetchReconAndRender() {
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_GET_TECH_FINDINGS" }, function (response) {
+        if (chrome.runtime.lastError) {
+          if (activeTab === "recon") renderShell(buildReconBody([]));
+          return;
+        }
+        var findings = (response && response.findings) || [];
+        if (activeTab === "recon") renderShell(buildReconBody(findings));
+      });
+    } catch (e) {
+      if (activeTab === "recon") renderShell(buildReconBody([]));
+    }
+  }
+
   /* ── Fetch stats (blocks panel) ────────────────────────────────────── */
 
+  /**
+   * Flush any pending page-guard deltas, then fetch DNR + page-guard
+   * block stats from the background and render the Blocks panel.
+   */
   function fetchStats() {
     if (pgFlushTimer !== null) {
       clearTimeout(pgFlushTimer);
@@ -962,8 +1173,191 @@
     }
   }
 
+  /* ── Repeater overlay ────────────────────────────────────────────── */
+
+  /**
+   * Show the repeater panel, optionally pre-filled with request data.
+   * @param {Object} [prefill]  { url, method, headers, body } to pre-populate.
+   */
+  function openRepeater(prefill) {
+    if (!repeaterRoot) return;
+    repeaterRoot.style.display = "";
+    renderRepeater(prefill);
+  }
+
+  /** Hide the repeater panel. */
+  function closeRepeater() {
+    if (repeaterRoot) repeaterRoot.style.display = "none";
+  }
+
+  /**
+   * Render the repeater form: method selector, URL input, headers/body
+   * textareas, send button, and response viewer. Strips browser-managed
+   * headers (Cookie, Sec-*, etc.) from the pre-filled header object.
+   */
+  function renderRepeater(prefill) {
+    if (!repeaterRoot) return;
+    prefill = prefill || {};
+    var method = prefill.method || "GET";
+    var url = prefill.url || "";
+    var headers = prefill.headers || "";
+    var body = prefill.body || "";
+
+    if (typeof headers === "object" && !Array.isArray(headers)) {
+      var skipH = { "cookie": 1, "host": 1, "connection": 1, "content-length": 1,
+                    "accept-encoding": 1, "sec-fetch-site": 1, "sec-fetch-mode": 1,
+                    "sec-fetch-dest": 1, "sec-ch-ua": 1, "sec-ch-ua-mobile": 1,
+                    "sec-ch-ua-platform": 1, "sec-ch-prefers-color-scheme": 1 };
+      var hParts = [];
+      var hKeys = Object.keys(headers);
+      for (var hi = 0; hi < hKeys.length; hi++) {
+        if (!skipH[hKeys[hi].toLowerCase()]) {
+          hParts.push(hKeys[hi] + ": " + headers[hKeys[hi]]);
+        }
+      }
+      headers = hParts.join("\n");
+    }
+
+    repeaterRoot.innerHTML =
+      '<div class="boxedin-rpt__header">' +
+        '<span class="boxedin-rpt__title">Request Repeater</span>' +
+        '<button type="button" class="boxedin-rpt__close" title="Close">\u2715</button>' +
+      '</div>' +
+      '<div class="boxedin-rpt__body">' +
+        '<div class="boxedin-rpt__row boxedin-rpt__row--method-url">' +
+          '<select class="boxedin-rpt__method">' +
+            '<option' + (method === "GET" ? " selected" : "") + '>GET</option>' +
+            '<option' + (method === "POST" ? " selected" : "") + '>POST</option>' +
+            '<option' + (method === "PUT" ? " selected" : "") + '>PUT</option>' +
+            '<option' + (method === "PATCH" ? " selected" : "") + '>PATCH</option>' +
+            '<option' + (method === "DELETE" ? " selected" : "") + '>DELETE</option>' +
+            '<option' + (method === "HEAD" ? " selected" : "") + '>HEAD</option>' +
+            '<option' + (method === "OPTIONS" ? " selected" : "") + '>OPTIONS</option>' +
+          '</select>' +
+          '<input type="text" class="boxedin-rpt__url" placeholder="https://example.com/api/..." value="' + escapeAttr(url) + '" />' +
+        '</div>' +
+        '<label class="boxedin-rpt__label">Headers <span class="boxedin-rpt__label-hint">(one per line: Name: Value)</span></label>' +
+        '<textarea class="boxedin-rpt__headers" rows="4" spellcheck="false">' + escapeHtml(headers) + '</textarea>' +
+        '<label class="boxedin-rpt__label">Body</label>' +
+        '<textarea class="boxedin-rpt__bodyinput" rows="3" spellcheck="false">' + escapeHtml(body) + '</textarea>' +
+        '<div class="boxedin-rpt__actions">' +
+          '<button type="button" class="boxedin-rpt__send">Send</button>' +
+          '<span class="boxedin-rpt__status"></span>' +
+        '</div>' +
+        '<div class="boxedin-rpt__response">' +
+          '<div class="boxedin-rpt__resp-head"></div>' +
+          '<pre class="boxedin-rpt__resp-body"></pre>' +
+        '</div>' +
+      '</div>';
+
+    wireRepeater();
+  }
+
+  /**
+   * Bind repeater close and send buttons. Send parses the header textarea,
+   * dispatches BOXEDIN_REPLAY_REQUEST, and renders the response inline.
+   */
+  function wireRepeater() {
+    if (!repeaterRoot) return;
+
+    var closeBtn = repeaterRoot.querySelector(".boxedin-rpt__close");
+    if (closeBtn) closeBtn.addEventListener("click", closeRepeater);
+
+    var sendBtn = repeaterRoot.querySelector(".boxedin-rpt__send");
+    if (sendBtn) {
+      sendBtn.addEventListener("click", function () {
+        var methodEl = repeaterRoot.querySelector(".boxedin-rpt__method");
+        var urlEl = repeaterRoot.querySelector(".boxedin-rpt__url");
+        var headersEl = repeaterRoot.querySelector(".boxedin-rpt__headers");
+        var bodyEl = repeaterRoot.querySelector(".boxedin-rpt__bodyinput");
+        var statusEl = repeaterRoot.querySelector(".boxedin-rpt__status");
+        var respHead = repeaterRoot.querySelector(".boxedin-rpt__resp-head");
+        var respBody = repeaterRoot.querySelector(".boxedin-rpt__resp-body");
+
+        var reqUrl = urlEl ? urlEl.value.trim() : "";
+        var reqMethod = methodEl ? methodEl.value : "GET";
+        if (!reqUrl) {
+          if (statusEl) statusEl.textContent = "URL is required";
+          return;
+        }
+
+        var parsedHeaders = {};
+        if (headersEl) {
+          var lines = headersEl.value.split("\n");
+          for (var li = 0; li < lines.length; li++) {
+            var line = lines[li].trim();
+            if (!line) continue;
+            var colon = line.indexOf(":");
+            if (colon > 0) {
+              parsedHeaders[line.substring(0, colon).trim()] = line.substring(colon + 1).trim();
+            }
+          }
+        }
+
+        var reqBody = bodyEl ? bodyEl.value : "";
+
+        if (sendBtn) sendBtn.disabled = true;
+        if (statusEl) statusEl.textContent = "Sending\u2026";
+        if (respHead) respHead.innerHTML = "";
+        if (respBody) respBody.textContent = "";
+
+        try {
+          chrome.runtime.sendMessage({
+            type: "BOXEDIN_REPLAY_REQUEST",
+            url: reqUrl,
+            method: reqMethod,
+            headers: parsedHeaders,
+            body: reqBody
+          }, function (response) {
+            if (sendBtn) sendBtn.disabled = false;
+            if (chrome.runtime.lastError) {
+              if (statusEl) statusEl.textContent = "Error: " + chrome.runtime.lastError.message;
+              return;
+            }
+            if (!response) {
+              if (statusEl) statusEl.textContent = "No response";
+              return;
+            }
+            if (!response.ok && response.error) {
+              if (statusEl) statusEl.textContent = "Error";
+              if (respHead) respHead.innerHTML = '<span class="boxedin-rpt__resp-error">' + escapeHtml(response.error) + '</span>';
+              if (respBody) respBody.textContent = "";
+              return;
+            }
+
+            var badgeClass = response.status < 300 ? "boxedin-rpt__resp-status--ok" :
+                             response.status < 400 ? "boxedin-rpt__resp-status--redirect" :
+                             "boxedin-rpt__resp-status--error";
+            if (statusEl) statusEl.textContent = response.elapsedMs + " ms";
+
+            var headParts = [];
+            headParts.push('<span class="boxedin-rpt__resp-status ' + badgeClass + '">' +
+              response.status + ' ' + escapeHtml(response.statusText || "") + '</span>');
+            if (response.headers) {
+              headParts.push('<details class="boxedin-rpt__resp-headers-details"><summary>Response headers</summary><pre class="boxedin-rpt__resp-headers-pre">');
+              var rKeys = Object.keys(response.headers);
+              for (var rk = 0; rk < rKeys.length; rk++) {
+                headParts.push(escapeHtml(rKeys[rk]) + ": " + escapeHtml(response.headers[rKeys[rk]]) + "\n");
+              }
+              headParts.push('</pre></details>');
+            }
+            if (respHead) respHead.innerHTML = headParts.join("");
+            if (respBody) respBody.textContent = response.body || "";
+          });
+        } catch (e) {
+          if (sendBtn) sendBtn.disabled = false;
+          if (statusEl) statusEl.textContent = "Error: " + (e.message || e);
+        }
+      });
+    }
+  }
+
   /* ── Mount ─────────────────────────────────────────────────────────── */
 
+  /**
+   * Create the overlay and repeater root elements, wire storage listeners
+   * for live preference updates, restore persisted state, and start polling.
+   */
   function mount() {
     if (document.getElementById("boxedin-block-stats-root")) return;
     root = document.createElement("div");
@@ -971,6 +1365,13 @@
     root.setAttribute("role", "complementary");
     root.setAttribute("aria-label", "BoxedIn network block statistics");
     (document.body || document.documentElement).appendChild(root);
+
+    repeaterRoot = document.createElement("div");
+    repeaterRoot.id = "boxedin-repeater-root";
+    repeaterRoot.setAttribute("role", "dialog");
+    repeaterRoot.setAttribute("aria-label", "BoxedIn request repeater");
+    repeaterRoot.style.display = "none";
+    (document.body || document.documentElement).appendChild(repeaterRoot);
 
     chrome.storage.onChanged.addListener(function (changes, areaName) {
       if (areaName !== "local") return;
@@ -1013,7 +1414,7 @@
 
       if (redteamEnabled) {
         var savedTab = items[STORAGE_ACTIVE_TAB];
-        if (savedTab === "auth" || savedTab === "exfil" || savedTab === "inject") {
+        if (savedTab === "auth" || savedTab === "exfil" || savedTab === "inject" || savedTab === "recon") {
           activeTab = savedTab;
         }
         enablePageGuardRedteam();

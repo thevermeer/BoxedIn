@@ -919,6 +919,179 @@
 
   var redteamScansActive = false;
 
+  function scanTechStack() {
+    try {
+      var found = {};
+
+      var ATTACK_NOTES = {
+        "WordPress": "XML-RPC, wp-login brute force, plugin/theme CVEs",
+        "Drupal": "Drupalgeddon RCE history, module CVEs",
+        "Joomla": "Admin panel brute force, extension CVEs",
+        "Shopify": "Liquid template injection, API token leakage",
+        "Squarespace": "Limited attack surface; check third-party integrations",
+        "Wix": "Client-side data exposure via Wix APIs",
+        "Ghost": "Admin panel exposure, API key leakage",
+        "Webflow": "Exposed site data in client JS",
+        "React": "Client-side state in DevTools, check for dangerouslySetInnerHTML",
+        "Vue": "Vue DevTools state inspection, v-html XSS risk",
+        "Angular": "Template injection if user input in templates, zone.js overhead",
+        "jQuery": "DOM XSS via $.html(), check version for known CVEs",
+        "Next.js": "API routes may leak server config, check _next/data exposure",
+        "Nuxt": "Server-side config leakage, __NUXT__ state exposure",
+        "Svelte": "Minimal attack surface; check {@html} usage",
+        "Ember": "Prototype pollution history, check for triple-stash {{{",
+        "Backbone": "Underscore template injection if user input in templates",
+        "Google Analytics": "PII leakage via query strings and custom dimensions",
+        "Google Tag Manager": "Tag injection if GTM container is misconfigured",
+        "Facebook Pixel": "Custom event data may leak PII to third party",
+        "Hotjar": "Session recordings may capture sensitive form data",
+        "Mixpanel": "User property tracking may expose PII",
+        "Segment": "Data routing to multiple third-party destinations",
+        "Heap": "Auto-capture may record sensitive input fields",
+        "Amplitude": "User properties and event data may leak PII",
+        "PHP": "Version disclosure, check for known CVEs",
+        "Express": "Default error pages leak stack traces",
+        "Nginx": "Version disclosure, misconfiguration checks",
+        "Apache": "Version disclosure, mod_status/mod_info exposure",
+        "ASP.NET": "ViewState deserialization, debug mode exposure",
+        "Cloudflare": "CDN — origin IP may still be discoverable"
+      };
+
+      function emit(category, name, version, evidence) {
+        if (found[name]) return;
+        found[name] = true;
+        postRedteamToOverlay({
+          source: "boxedin-page-guard",
+          type: "tech",
+          category: category,
+          name: name,
+          version: version || null,
+          evidence: evidence,
+          attackNotes: ATTACK_NOTES[name] || ""
+        });
+      }
+
+      var metas = document.querySelectorAll('meta[name="generator"], meta[content]');
+      for (var mi = 0; mi < metas.length; mi++) {
+        var metaName = (metas[mi].getAttribute("name") || "").toLowerCase();
+        var metaContent = metas[mi].getAttribute("content") || "";
+        if (metaName === "generator") {
+          var mc = metaContent.toLowerCase();
+          if (mc.indexOf("wordpress") !== -1) emit("cms", "WordPress", metaContent.replace(/WordPress\s*/i, ""), "meta generator");
+          else if (mc.indexOf("drupal") !== -1) emit("cms", "Drupal", null, "meta generator");
+          else if (mc.indexOf("joomla") !== -1) emit("cms", "Joomla", null, "meta generator");
+          else if (mc.indexOf("ghost") !== -1) emit("cms", "Ghost", null, "meta generator");
+          else if (mc.indexOf("webflow") !== -1) emit("cms", "Webflow", null, "meta generator");
+          else if (mc.indexOf("squarespace") !== -1) emit("cms", "Squarespace", null, "meta generator");
+          else if (mc.indexOf("wix") !== -1) emit("cms", "Wix", null, "meta generator");
+          else if (mc.indexOf("shopify") !== -1) emit("cms", "Shopify", null, "meta generator");
+        }
+      }
+
+      var globalProbes = [
+        { test: "wp", category: "cms", name: "WordPress" },
+        { test: "Drupal", category: "cms", name: "Drupal" },
+        { test: "Joomla", category: "cms", name: "Joomla" },
+        { test: "Shopify", category: "cms", name: "Shopify" },
+        { test: "__NEXT_DATA__", category: "framework", name: "Next.js" },
+        { test: "__NUXT__", category: "framework", name: "Nuxt" },
+        { test: "__SVELTE__", category: "framework", name: "Svelte" },
+        { test: "Ember", category: "framework", name: "Ember" },
+        { test: "Backbone", category: "framework", name: "Backbone" },
+        { test: "ga", category: "analytics", name: "Google Analytics" },
+        { test: "google_tag_manager", category: "analytics", name: "Google Tag Manager" },
+        { test: "fbq", category: "analytics", name: "Facebook Pixel" },
+        { test: "hj", category: "analytics", name: "Hotjar" },
+        { test: "mixpanel", category: "analytics", name: "Mixpanel" },
+        { test: "analytics", category: "analytics", name: "Segment", check: function () { try { return window.analytics && typeof window.analytics.identify === "function"; } catch (e) { return false; } } },
+        { test: "heap", category: "analytics", name: "Heap", check: function () { try { return window.heap && typeof window.heap.track === "function"; } catch (e) { return false; } } },
+        { test: "amplitude", category: "analytics", name: "Amplitude", check: function () { try { return window.amplitude && typeof window.amplitude.getInstance === "function"; } catch (e) { return false; } } }
+      ];
+      for (var gi = 0; gi < globalProbes.length; gi++) {
+        var gp = globalProbes[gi];
+        try {
+          if (gp.check) {
+            if (gp.check()) emit(gp.category, gp.name, null, "window global");
+          } else if (window[gp.test] != null) {
+            emit(gp.category, gp.name, null, "window global");
+          }
+        } catch (eG) { /* ignore */ }
+      }
+
+      try {
+        if (window.React || (window.__REACT_DEVTOOLS_GLOBAL_HOOK__ && window.__REACT_DEVTOOLS_GLOBAL_HOOK__.renderers && window.__REACT_DEVTOOLS_GLOBAL_HOOK__.renderers.size > 0)) {
+          var rv = null;
+          try { rv = window.React && window.React.version ? window.React.version : null; } catch (e) {}
+          emit("framework", "React", rv, "window global");
+        }
+      } catch (eR) { /* ignore */ }
+      try {
+        if (window.Vue) emit("framework", "Vue", window.Vue.version || null, "window global");
+      } catch (eV) { /* ignore */ }
+      try {
+        if (window.angular || document.querySelector("[ng-app], [ng-controller], [data-ng-app]")) {
+          var av = null;
+          try { av = window.angular && window.angular.version ? window.angular.version.full : null; } catch (e) {}
+          emit("framework", "Angular", av, "window global");
+        }
+      } catch (eA) { /* ignore */ }
+      try {
+        if (window.jQuery || window.$) {
+          var jqv = null;
+          try { jqv = window.jQuery ? window.jQuery.fn.jquery : (window.$ && window.$.fn ? window.$.fn.jquery : null); } catch (e) {}
+          emit("framework", "jQuery", jqv, "window global");
+        }
+      } catch (eJ) { /* ignore */ }
+
+      var scriptPatterns = [
+        { pattern: "wp-content/", category: "cms", name: "WordPress" },
+        { pattern: "wp-includes/", category: "cms", name: "WordPress" },
+        { pattern: "cdn.shopify.com", category: "cms", name: "Shopify" },
+        { pattern: "squarespace.com", category: "cms", name: "Squarespace" },
+        { pattern: "static.wixstatic.com", category: "cms", name: "Wix" },
+        { pattern: "parastorage.com", category: "cms", name: "Wix" },
+        { pattern: "ghost.io", category: "cms", name: "Ghost" },
+        { pattern: "webflow.com", category: "cms", name: "Webflow" },
+        { pattern: "react", category: "framework", name: "React" },
+        { pattern: "vue", category: "framework", name: "Vue" },
+        { pattern: "angular", category: "framework", name: "Angular" },
+        { pattern: "jquery", category: "framework", name: "jQuery" },
+        { pattern: "ember", category: "framework", name: "Ember" },
+        { pattern: "backbone", category: "framework", name: "Backbone" },
+        { pattern: "svelte", category: "framework", name: "Svelte" },
+        { pattern: "googletagmanager.com", category: "analytics", name: "Google Tag Manager" },
+        { pattern: "google-analytics.com", category: "analytics", name: "Google Analytics" },
+        { pattern: "gtag/js", category: "analytics", name: "Google Analytics" },
+        { pattern: "connect.facebook.net", category: "analytics", name: "Facebook Pixel" },
+        { pattern: "hotjar.com", category: "analytics", name: "Hotjar" },
+        { pattern: "cdn.mxpnl.com", category: "analytics", name: "Mixpanel" },
+        { pattern: "cdn.segment.com", category: "analytics", name: "Segment" },
+        { pattern: "cdn.heapanalytics.com", category: "analytics", name: "Heap" },
+        { pattern: "cdn.amplitude.com", category: "analytics", name: "Amplitude" }
+      ];
+      var scripts = document.scripts || [];
+      for (var si = 0; si < scripts.length; si++) {
+        var sSrc = (scripts[si].src || "").toLowerCase();
+        if (!sSrc) continue;
+        for (var sp = 0; sp < scriptPatterns.length; sp++) {
+          if (sSrc.indexOf(scriptPatterns[sp].pattern) !== -1) {
+            emit(scriptPatterns[sp].category, scriptPatterns[sp].name, null, "script src");
+          }
+        }
+      }
+      var links = document.querySelectorAll('link[rel="stylesheet"]');
+      for (var li = 0; li < links.length; li++) {
+        var lHref = (links[li].href || "").toLowerCase();
+        if (!lHref) continue;
+        for (var lp = 0; lp < scriptPatterns.length; lp++) {
+          if (lHref.indexOf(scriptPatterns[lp].pattern) !== -1) {
+            emit(scriptPatterns[lp].category, scriptPatterns[lp].name, null, "link href");
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   function runRedteamScans() {
     if (redteamScansActive) return;
     var g = ensureGuard();
@@ -929,10 +1102,12 @@
       document.addEventListener("DOMContentLoaded", function () {
         scanReflectedParams();
         scanCsrfTokens();
+        scanTechStack();
       });
     } else {
       scanReflectedParams();
       scanCsrfTokens();
+      scanTechStack();
     }
     hookExfilApis();
     observeXssSinks();

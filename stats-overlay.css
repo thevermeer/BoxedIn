@@ -534,6 +534,40 @@
   padding: 4px 0;
 }
 
+/* ── Recon panel ───────────────────────────────────────────────────── */
+
+.boxedin-rt__recon-count {
+  font-size: 9px;
+  font-weight: 600;
+  opacity: 0.5;
+  margin-left: auto;
+}
+
+.boxedin-rt__recon-version {
+  font-weight: 400;
+  font-size: 9px;
+  opacity: 0.65;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.boxedin-rt__recon-evidence {
+  display: inline-block;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 1px 4px;
+  margin-left: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.06);
+  opacity: 0.6;
+  vertical-align: middle;
+}
+
+.boxedin-stats--dark .boxedin-rt__recon-evidence {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 /* ── Exfil event stream ────────────────────────────────────────────── */
 
 .boxedin-rt__stream {
@@ -559,6 +593,20 @@
   line-height: 1.3;
   border-bottom: 1px solid rgba(0, 0, 0, 0.04);
   align-items: baseline;
+  border-radius: 3px;
+  transition: background 0.1s;
+}
+
+.boxedin-rt__event[data-rpt-url] {
+  cursor: pointer;
+}
+
+.boxedin-rt__event[data-rpt-url]:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.boxedin-stats--dark .boxedin-rt__event[data-rpt-url]:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .boxedin-stats--dark .boxedin-rt__event {
@@ -595,11 +643,47 @@
   white-space: nowrap;
 }
 
+.boxedin-rt__exfil-toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
 .boxedin-rt__filters {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-bottom: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.boxedin-rt__exfil-clear {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.04);
+  color: inherit;
+  cursor: pointer;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.boxedin-rt__exfil-clear:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.boxedin-stats--dark .boxedin-rt__exfil-clear {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.boxedin-stats--dark .boxedin-rt__exfil-clear:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .boxedin-rt__filter {
@@ -698,4 +782,303 @@
   opacity: 0.6;
   font-size: 10px;
   font-style: italic;
+}
+
+/* ── Open-repeater button in header ───────────────────────────────── */
+
+.boxedin-stats__open-repeater {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.7;
+  border-radius: 4px;
+}
+
+.boxedin-stats__open-repeater:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.boxedin-stats--dark .boxedin-stats__open-repeater:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Request Repeater overlay ─────────────────────────────────────── */
+
+#boxedin-repeater-root {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2147483646;
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #1d1d1f;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.boxedin-stats--dark ~ #boxedin-repeater-root,
+#boxedin-repeater-root.boxedin-rpt--dark {
+  color: #f2f2f7;
+  background: rgba(28, 28, 30, 0.95);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.boxedin-rpt__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  font-weight: 600;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.boxedin-stats--dark ~ #boxedin-repeater-root .boxedin-rpt__header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.boxedin-rpt__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.boxedin-rpt__close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.7;
+  border-radius: 4px;
+}
+
+.boxedin-rpt__close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.boxedin-stats--dark ~ #boxedin-repeater-root .boxedin-rpt__close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.boxedin-rpt__body {
+  padding: 8px 10px 10px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.boxedin-rpt__row--method-url {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.boxedin-rpt__method {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.03);
+  color: inherit;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.boxedin-stats--dark ~ #boxedin-repeater-root .boxedin-rpt__method {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.boxedin-rpt__url {
+  font: inherit;
+  font-size: 10px;
+  padding: 4px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.02);
+  color: inherit;
+  flex: 1;
+  min-width: 0;
+}
+
+.boxedin-stats--dark ~ #boxedin-repeater-root .boxedin-rpt__url {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.boxedin-rpt__label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.7;
+}
+
+.boxedin-rpt__label-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.6;
+}
+
+.boxedin-rpt__headers,
+.boxedin-rpt__bodyinput {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.02);
+  color: inherit;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.boxedin-stats--dark ~ #boxedin-repeater-root .boxedin-rpt__headers,
+.boxedin-stats--dark ~ #boxedin-repeater-root .boxedin-rpt__bodyinput {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.boxedin-rpt__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.boxedin-rpt__send {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 4px;
+  border: none;
+  background: #0070d8;
+  color: #fff;
+  cursor: pointer;
+}
+
+.boxedin-rpt__send:hover {
+  background: #0060b8;
+}
+
+.boxedin-rpt__send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.boxedin-rpt__status {
+  font-size: 10px;
+  opacity: 0.65;
+}
+
+/* ── Response viewer ──────────────────────────────────────────────── */
+
+.boxedin-rpt__response {
+  margin-top: 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding-top: 6px;
+}
+
+.boxedin-stats--dark ~ #boxedin-repeater-root .boxedin-rpt__response {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.boxedin-rpt__resp-head {
+  margin-bottom: 4px;
+}
+
+.boxedin-rpt__resp-status {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.boxedin-rpt__resp-status--ok {
+  background: #27ae60;
+  color: #fff;
+}
+
+.boxedin-rpt__resp-status--redirect {
+  background: #f39c12;
+  color: #fff;
+}
+
+.boxedin-rpt__resp-status--error {
+  background: #c41e3a;
+  color: #fff;
+}
+
+.boxedin-rpt__resp-error {
+  color: #c41e3a;
+  font-weight: 600;
+  font-size: 10px;
+}
+
+.boxedin-rpt__resp-headers-details {
+  margin-top: 4px;
+  font-size: 9px;
+}
+
+.boxedin-rpt__resp-headers-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.boxedin-rpt__resp-headers-pre {
+  margin: 4px 0 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-all;
+  opacity: 0.75;
+}
+
+.boxedin-rpt__resp-body {
+  margin: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.boxedin-stats--dark ~ #boxedin-repeater-root .boxedin-rpt__resp-body {
+  background: rgba(255, 255, 255, 0.05);
 }
