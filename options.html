@@ -182,6 +182,34 @@
         <button type="button" id="addExfilHost" class="btn">Add host</button>
       </div>
 
+      <h3 class="section-subtitle">Blocked cookies</h3>
+      <p class="hint hint-tight">
+        Cookies in this list are automatically deleted whenever the browser
+        tries to set them. Cookies blocked from the Auth tab in the overlay
+        are added here automatically.
+      </p>
+      <ul id="blockedCookiesList" class="phrase-list"></ul>
+      <div class="add-row add-row--cookie">
+        <input
+          type="text"
+          id="newBlockedCookieName"
+          placeholder="cookie_name"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <input
+          type="text"
+          id="newBlockedCookieDomain"
+          placeholder=".example.com"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="button" id="addBlockedCookie" class="btn">Block cookie</button>
+      </div>
+      <div id="blockedCookiesActions" class="blocked-hosts-actions" style="display:none">
+        <button type="button" id="clearBlockedCookies" class="btn btn-secondary">Clear all blocked cookies</button>
+      </div>
+
       <div class="actions" style="margin-top:16px">
         <button type="button" id="exportFindings" class="btn btn-secondary">Export all findings as JSON</button>
       </div>

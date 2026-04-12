@@ -264,6 +264,14 @@ h2.section-title {
   border: 1px solid #ffe082;
 }
 
+.add-row--cookie input:first-child {
+  flex: 1;
+}
+
+.add-row--cookie input:nth-child(2) {
+  flex: 1;
+}
+
 h3.section-subtitle {
   font-size: 0.8rem;
   font-weight: 600;

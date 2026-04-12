@@ -882,6 +882,53 @@
   border-color: #5ac8fa;
 }
 
+/* ── Cookie block button (Auth panel) ──────────────────────────────── */
+
+.boxedin-rt__cookie-block-btn {
+  font: inherit;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  margin-left: 4px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+  vertical-align: middle;
+}
+
+.boxedin-rt__cookie-block-btn:hover {
+  opacity: 1;
+  background: rgba(220, 50, 50, 0.1);
+  border-color: #dc3232;
+  color: #dc3232;
+}
+
+.boxedin-stats--dark .boxedin-rt__cookie-block-btn:hover {
+  background: rgba(255, 70, 70, 0.15);
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+.boxedin-rt__cookie-block-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.boxedin-rt__cookie-block-btn--done {
+  color: #2ecc40;
+  border-color: #2ecc40;
+  opacity: 0.8;
+}
+
+.boxedin-stats--dark .boxedin-rt__cookie-block-btn--done {
+  color: #5dde72;
+  border-color: #5dde72;
+}
+
 /* ── Red-team disabled state ───────────────────────────────────────── */
 
 .boxedin-rt__disabled {

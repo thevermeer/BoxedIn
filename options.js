@@ -13,6 +13,7 @@
   var KEY_BLOCKED_HOSTS = "blockedHosts";
   var KEY_REDTEAM_ENABLED = "redteamEnabled";
   var KEY_EXFIL_ALLOWLIST = "redteamExfilAllowlist";
+  var KEY_BLOCKED_COOKIES = "blockedCookies";
   /** Chrome urlFilter practical upper bound; rules that exceed fail to apply. */
   var MAX_URL_FILTER_LEN = 4096;
 
@@ -195,6 +196,47 @@
     }
   }
 
+  function renderBlockedCookies(cookies) {
+    var el = document.getElementById("blockedCookiesList");
+    var actionsEl = document.getElementById("blockedCookiesActions");
+    if (!el) return;
+    el.innerHTML = "";
+    var list = Array.isArray(cookies) ? cookies : [];
+    if (actionsEl) {
+      actionsEl.style.display = list.length > 0 ? "" : "none";
+    }
+    if (list.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "empty-hint";
+      empty.textContent = "No cookies blocked. Block cookies from the Auth tab in the overlay or add manually below.";
+      el.appendChild(empty);
+      return;
+    }
+    for (var i = 0; i < list.length; i++) {
+      (function (index) {
+        var entry = list[index];
+        var li = document.createElement("li");
+        var code = document.createElement("code");
+        code.className = "blocked-host-name";
+        code.textContent = entry.name + " (" + entry.domain + ")";
+        var rm = document.createElement("button");
+        rm.type = "button";
+        rm.className = "btn btn-remove";
+        rm.textContent = "Remove";
+        rm.addEventListener("click", function () {
+          var next = list.slice();
+          next.splice(index, 1);
+          var patch = {};
+          patch[KEY_BLOCKED_COOKIES] = next;
+          chrome.storage.local.set(patch);
+        });
+        li.appendChild(code);
+        li.appendChild(rm);
+        el.appendChild(li);
+      })(i);
+    }
+  }
+
   function renderBlockedHosts(hosts) {
     if (!blockedHostsListEl) return;
     blockedHostsListEl.innerHTML = "";
@@ -236,7 +278,7 @@
 
   function load() {
     chrome.storage.local.get(
-      [KEY_USER_DNR, KEY_LAST_ERROR, KEY_LAST_AT, KEY_CAPTURE_HOSTS, KEY_BLOCKED_HOSTS, KEY_REDTEAM_ENABLED, KEY_EXFIL_ALLOWLIST],
+      [KEY_USER_DNR, KEY_LAST_ERROR, KEY_LAST_AT, KEY_CAPTURE_HOSTS, KEY_BLOCKED_HOSTS, KEY_REDTEAM_ENABLED, KEY_EXFIL_ALLOWLIST, KEY_BLOCKED_COOKIES],
       function (localItems) {
         renderUserDnr((localItems && localItems[KEY_USER_DNR]) || []);
         renderApplyStatus(
@@ -253,6 +295,7 @@
           rtEl.checked = !!localItems[KEY_REDTEAM_ENABLED];
         }
         renderExfilAllowlist((localItems && localItems[KEY_EXFIL_ALLOWLIST]) || []);
+        renderBlockedCookies((localItems && localItems[KEY_BLOCKED_COOKIES]) || []);
       }
     );
   }
@@ -376,6 +419,48 @@
       });
     }
 
+    var newBlockedCookieNameEl = document.getElementById("newBlockedCookieName");
+    var newBlockedCookieDomainEl = document.getElementById("newBlockedCookieDomain");
+    var addBlockedCookieBtn = document.getElementById("addBlockedCookie");
+    var clearBlockedCookiesBtn = document.getElementById("clearBlockedCookies");
+
+    if (addBlockedCookieBtn && newBlockedCookieNameEl && newBlockedCookieDomainEl) {
+      function addBlockedCookieFromInput() {
+        var name = (newBlockedCookieNameEl.value || "").trim();
+        var domain = (newBlockedCookieDomainEl.value || "").trim().toLowerCase();
+        if (!name || !domain) return;
+        chrome.storage.local.get([KEY_BLOCKED_COOKIES], function (items) {
+          var list = (items[KEY_BLOCKED_COOKIES] || []).slice();
+          var dup = false;
+          for (var i = 0; i < list.length; i++) {
+            if (list[i].name === name && list[i].domain === domain) { dup = true; break; }
+          }
+          if (!dup) list.push({ name: name, domain: domain });
+          newBlockedCookieNameEl.value = "";
+          newBlockedCookieDomainEl.value = "";
+          var patch = {};
+          patch[KEY_BLOCKED_COOKIES] = list;
+          chrome.storage.local.set(patch);
+          renderBlockedCookies(list);
+        });
+      }
+      addBlockedCookieBtn.addEventListener("click", addBlockedCookieFromInput);
+      newBlockedCookieNameEl.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); addBlockedCookieFromInput(); }
+      });
+      newBlockedCookieDomainEl.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); addBlockedCookieFromInput(); }
+      });
+    }
+
+    if (clearBlockedCookiesBtn) {
+      clearBlockedCookiesBtn.addEventListener("click", function () {
+        var patch = {};
+        patch[KEY_BLOCKED_COOKIES] = [];
+        chrome.storage.local.set(patch);
+      });
+    }
+
     chrome.storage.onChanged.addListener(function (changes, areaName) {
       if (areaName !== "local") return;
       if (changes[KEY_USER_DNR]) {
@@ -401,6 +486,9 @@
       }
       if (changes[KEY_EXFIL_ALLOWLIST]) {
         renderExfilAllowlist(changes[KEY_EXFIL_ALLOWLIST].newValue || []);
+      }
+      if (changes[KEY_BLOCKED_COOKIES]) {
+        renderBlockedCookies(changes[KEY_BLOCKED_COOKIES].newValue || []);
       }
     });
   }

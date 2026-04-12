@@ -35,7 +35,9 @@
 
   var STORAGE_REDTEAM_ENABLED = "redteamEnabled";
   var STORAGE_EXFIL_ALLOWLIST = "redteamExfilAllowlist";
+  var STORAGE_BLOCKED_COOKIES = "blockedCookies";
   var redteamEnabled = false;
+  var blockedCookiesList = [];
   var headerFindingsByTab = new Map();
   var exfilEventsByTab = new Map();
   var injectFindingsByTab = new Map();
@@ -397,12 +399,14 @@
         d[STORAGE_CAPTURE_HOSTS] = false;
         d[STORAGE_EXTENSION_ENABLED] = true;
         d[STORAGE_REDTEAM_ENABLED] = false;
+        d[STORAGE_BLOCKED_COOKIES] = [];
         return d;
       })(),
       function (items) {
         captureHostsEnabled = !!items[STORAGE_CAPTURE_HOSTS];
         extensionEnabled = items[STORAGE_EXTENSION_ENABLED] !== false;
         redteamEnabled = !!items[STORAGE_REDTEAM_ENABLED];
+        blockedCookiesList = Array.isArray(items[STORAGE_BLOCKED_COOKIES]) ? items[STORAGE_BLOCKED_COOKIES] : [];
         chrome.contextMenus.removeAll(function () {
           chrome.contextMenus.create(
             {
@@ -882,6 +886,49 @@
       sendResponse({ ok: true });
       return true;
     }
+    if (msg && msg.type === "BOXEDIN_REMOVE_COOKIE") {
+      var ckUrl = msg.url || "";
+      var ckName = msg.name || "";
+      var ckDomain = msg.domain || "";
+      if (chrome.cookies && chrome.cookies.remove && ckUrl && ckName) {
+        chrome.cookies.remove({ url: ckUrl, name: ckName }, function () {
+          var wasRemoved = !chrome.runtime.lastError;
+          if (wasRemoved && ckName && ckDomain) {
+            var alreadyBlocked = false;
+            for (var bi = 0; bi < blockedCookiesList.length; bi++) {
+              if (blockedCookiesList[bi].name === ckName && blockedCookiesList[bi].domain === ckDomain) {
+                alreadyBlocked = true;
+                break;
+              }
+            }
+            if (!alreadyBlocked) {
+              blockedCookiesList.push({ name: ckName, domain: ckDomain });
+              var patch = {};
+              patch[STORAGE_BLOCKED_COOKIES] = blockedCookiesList;
+              chrome.storage.local.set(patch);
+            }
+          }
+          sendResponse({ ok: true, removed: wasRemoved });
+        });
+      } else {
+        sendResponse({ ok: false });
+      }
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_UNBLOCK_COOKIE") {
+      var ubName = msg.name || "";
+      var ubDomain = msg.domain || "";
+      if (ubName && ubDomain) {
+        blockedCookiesList = blockedCookiesList.filter(function (e) {
+          return !(e.name === ubName && e.domain === ubDomain);
+        });
+        var ubPatch = {};
+        ubPatch[STORAGE_BLOCKED_COOKIES] = blockedCookiesList;
+        chrome.storage.local.set(ubPatch);
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
     if (msg && msg.type === "BOXEDIN_GET_AUTH_AUDIT") {
       var authTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
       var authUrl = sender && sender.tab ? sender.tab.url : "";
@@ -900,6 +947,8 @@
               var daysToExpiry = (ck.expirationDate - Date.now() / 1000) / 86400;
               if (daysToExpiry > 30) issues.push("excessive expiry (" + Math.round(daysToExpiry) + " days)");
             }
+            var ckProto = ck.secure ? "https://" : "http://";
+            var ckDom = ck.domain.charAt(0) === "." ? ck.domain.slice(1) : ck.domain;
             cookieAudit.push({
               name: ck.name,
               domain: ck.domain,
@@ -908,7 +957,8 @@
               sameSite: ck.sameSite,
               session: !ck.expirationDate,
               isSessionLike: isSession,
-              issues: issues
+              issues: issues,
+              removeUrl: ckProto + ckDom + (ck.path || "/")
             });
           }
           sendResponse({
@@ -1548,6 +1598,32 @@
       flushBlockStats();
     });
   }
+
+  if (chrome.cookies && chrome.cookies.onChanged) {
+    chrome.cookies.onChanged.addListener(function (changeInfo) {
+      if (changeInfo.removed) return;
+      var ck = changeInfo.cookie;
+      if (!ck || !ck.name) return;
+      for (var bi = 0; bi < blockedCookiesList.length; bi++) {
+        var entry = blockedCookiesList[bi];
+        if (entry.name === ck.name && (ck.domain === entry.domain || ck.domain === "." + entry.domain || "." + ck.domain === entry.domain)) {
+          var proto = ck.secure ? "https://" : "http://";
+          var dom = ck.domain.charAt(0) === "." ? ck.domain.slice(1) : ck.domain;
+          chrome.cookies.remove({ url: proto + dom + (ck.path || "/"), name: ck.name }, function () {
+            /* silently enforce */
+          });
+          break;
+        }
+      }
+    });
+  }
+
+  chrome.storage.onChanged.addListener(function (changes, areaName) {
+    if (areaName !== "local") return;
+    if (changes[STORAGE_BLOCKED_COOKIES]) {
+      blockedCookiesList = Array.isArray(changes[STORAGE_BLOCKED_COOKIES].newValue) ? changes[STORAGE_BLOCKED_COOKIES].newValue : [];
+    }
+  });
 
   initFromStorage();
 })();

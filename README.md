@@ -279,6 +279,7 @@ Open from the extension's context menu or `chrome://extensions` > BoxedIn > Deta
 - **Custom network block rules** — add, edit, or remove up to 50 `urlFilter` patterns. Patterns are validated on input and apply status is reported after the service worker processes them.
 - **Red-team tools** — a toggle to enable the Auth, Exfil, Inject, and Recon tabs in the overlay. Off by default.
 - **Exfiltration allowlist** — manage trusted hostnames that won't trigger third-party exfil alerts. The page's own origin is always allowed.
+- **Blocked cookies** — a persistent list of cookies that are automatically deleted whenever the browser tries to set them. Cookies blocked from the Auth tab in the overlay are added here automatically. Entries can also be added manually by specifying a cookie name and domain, or removed individually or cleared entirely. The service worker enforces the blocklist in real time via `chrome.cookies.onChanged`.
 - **Export findings** — downloads all stored data (settings, stats, findings) as a timestamped JSON file (`boxedin-findings-YYYY-MM-DD.json`).
 
 ---
@@ -318,6 +319,6 @@ See `rules-ids.txt` for the canonical reference.
 - `**webRequest**` — powers hostname capture, request body capture for the repeater, and header analysis for the red-team toolkit.
 - `**contextMenus**` — adds the enable/disable toggle to the toolbar context menu.
 - `**scripting**` — dynamically registers `page-guard.js` in the MAIN world when the extension is enabled.
-- `**cookies**` — used by the Auth tab to audit cookies for the current URL via `chrome.cookies.getAll()`.
+- `**cookies**` — used by the Auth tab to audit cookies for the current URL via `chrome.cookies.getAll()`, to delete cookies via `chrome.cookies.remove()`, and to enforce the persistent cookie blocklist in real time via `chrome.cookies.onChanged`.
 - `**<all_urls>**` (host permission) — allows content scripts and `webRequest` listeners to operate on all sites.
 

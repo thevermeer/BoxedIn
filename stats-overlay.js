@@ -660,6 +660,14 @@
     var warning = [];
     var info = [];
 
+    function cookieBlockBtn(name, domain, removeUrl) {
+      if (!removeUrl) return "";
+      return ' <button type="button" class="boxedin-rt__cookie-block-btn" data-cookie-name="' +
+        escapeAttr(name) + '" data-cookie-domain="' + escapeAttr(domain || "") +
+        '" data-remove-url="' + escapeAttr(removeUrl) +
+        '" title="Block this cookie (persistent)">block</button>';
+    }
+
     var reqHeaders = data.reqHeaders || [];
     for (var ri = 0; ri < reqHeaders.length; ri++) {
       var rh = reqHeaders[ri];
@@ -675,18 +683,19 @@
     var cookies = data.cookies || [];
     for (var ci = 0; ci < cookies.length; ci++) {
       var ck = cookies[ci];
+      var blockHtml = cookieBlockBtn(ck.name, ck.domain, ck.removeUrl);
       if (ck.issues && ck.issues.length > 0) {
         for (var ii = 0; ii < ck.issues.length; ii++) {
           var issue = ck.issues[ii];
           if (ck.isSessionLike && issue.indexOf("HttpOnly") !== -1) {
-            critical.push("Cookie <strong>" + escapeHtml(ck.name) + "</strong>: " + escapeHtml(issue));
+            critical.push("Cookie <strong>" + escapeHtml(ck.name) + "</strong>: " + escapeHtml(issue) + blockHtml);
           } else {
-            warning.push("Cookie <strong>" + escapeHtml(ck.name) + "</strong>: " + escapeHtml(issue));
+            warning.push("Cookie <strong>" + escapeHtml(ck.name) + "</strong>: " + escapeHtml(issue) + blockHtml);
           }
         }
       } else {
         info.push("Cookie: " + escapeHtml(ck.name) + " (" + escapeHtml(ck.domain) + ")" +
-          (ck.httpOnly ? " HttpOnly" : "") + (ck.secure ? " Secure" : ""));
+          (ck.httpOnly ? " HttpOnly" : "") + (ck.secure ? " Secure" : "") + blockHtml);
       }
     }
 
@@ -757,6 +766,43 @@
     return parts.join("");
   }
 
+  /** Bind click handlers for cookie block buttons in the Auth panel. */
+  function wireAuthPanel() {
+    var blockBtns = root.querySelectorAll(".boxedin-rt__cookie-block-btn");
+    for (var bi = 0; bi < blockBtns.length; bi++) {
+      (function (btn) {
+        btn.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var cookieName = btn.getAttribute("data-cookie-name");
+          var cookieDomain = btn.getAttribute("data-cookie-domain");
+          var removeUrl = btn.getAttribute("data-remove-url");
+          if (!cookieName || !removeUrl) return;
+          btn.disabled = true;
+          btn.textContent = "\u2026";
+          try {
+            chrome.runtime.sendMessage({
+              type: "BOXEDIN_REMOVE_COOKIE", name: cookieName, domain: cookieDomain, url: removeUrl
+            }, function (resp) {
+              if (chrome.runtime.lastError) { /* ignore */ }
+              if (resp && resp.removed) {
+                btn.textContent = "\u2713";
+                btn.classList.add("boxedin-rt__cookie-block-btn--done");
+                setTimeout(function () { fetchAuthAndRender(); }, 600);
+              } else {
+                btn.textContent = "fail";
+                btn.disabled = false;
+              }
+            });
+          } catch (e) {
+            btn.textContent = "block";
+            btn.disabled = false;
+          }
+        });
+      })(blockBtns[bi]);
+    }
+  }
+
   /** Fetch auth audit data from the background and render the Auth panel. */
   function fetchAuthAndRender() {
     try {
@@ -765,7 +811,10 @@
           if (activeTab === "auth") renderShell(buildAuthBody(null));
           return;
         }
-        if (activeTab === "auth") renderShell(buildAuthBody(response));
+        if (activeTab === "auth") {
+          renderShell(buildAuthBody(response));
+          wireAuthPanel();
+        }
       });
     } catch (e) {
       if (activeTab === "auth") renderShell(buildAuthBody(null));
