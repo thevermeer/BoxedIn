@@ -13,7 +13,8 @@
     "cookies"
   ],
   "action": {
-    "default_title": "BoxedIn — click to turn off"
+    "default_title": "BoxedIn",
+    "default_popup": "popup.html"
   },
   "host_permissions": ["<all_urls>"],
   "background": {

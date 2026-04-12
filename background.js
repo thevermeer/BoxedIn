@@ -286,9 +286,7 @@
       });
       chrome.action.setBadgeBackgroundColor({ color: "#9a1c1c" });
       chrome.action.setTitle({
-        title: extensionEnabled
-          ? "BoxedIn — click to turn off"
-          : "BoxedIn is off — click to turn on",
+        title: extensionEnabled ? "BoxedIn" : "BoxedIn (disabled)",
       });
     } catch (eUi) {
       console.warn("[BoxedIn] updateActionUi:", eUi);
@@ -1166,13 +1164,7 @@
     }
   });
 
-  if (chrome.action && chrome.action.onClicked) {
-    chrome.action.onClicked.addListener(function () {
-      var patch = {};
-      patch[STORAGE_EXTENSION_ENABLED] = !extensionEnabled;
-      chrome.storage.local.set(patch);
-    });
-  }
+  /* onClicked no longer fires — the popup handles enable/disable. */
 
   if (chrome.webRequest && chrome.webRequest.onBeforeRequest) {
     try {
