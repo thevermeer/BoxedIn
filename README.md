@@ -209,39 +209,51 @@ Maps the injection attack surface with four analysis sections:
 
 ### Recon Tab
 
-Performs passive tech-stack fingerprinting to identify the site's CMS, JavaScript frameworks, analytics services, and server software. Findings are grouped by category with detection evidence and attack-surface notes.
+Performs passive tech-stack fingerprinting to identify the site's CMS, JavaScript frameworks, analytics services, and server software. Findings are grouped by category with detection evidence and attack-surface notes. Where possible, version numbers are extracted automatically.
 
-**Detection methods:**
+**Detection methods (7 layers):**
 
-- **Meta tags** (page-guard) — parses `<meta name="generator">` content for CMS signatures like `WordPress 6.x`, `Drupal`, `Joomla`, etc.
-- **Window globals** (page-guard) — probes well-known objects such as `window.wp`, `window.React`, `window.__NEXT_DATA__`, `window.jQuery`, `window.ga`, and `window.fbq`.
-- **Script/link URL patterns** (page-guard) — scans `document.scripts` and stylesheets for CDN substrings like `wp-content/`, `cdn.shopify.com`, `googletagmanager.com`, and `connect.facebook.net`.
-- **Response headers** (background) — extracts technology from `X-Powered-By` and `Server` headers (e.g., `PHP/8.x`, `nginx`, `cloudflare`).
+- **Meta tags** (page-guard) — parses `<meta name="generator">` and `<meta name="application-name">` content for CMS signatures. Extracts version numbers where present (e.g., `WordPress 6.4`, `Drupal 10.2`, `Hugo 0.120`).
+- **Window globals** (page-guard) — probes 30+ well-known objects including `window.wp`, `window.React`, `window.Vue`, `window.__NEXT_DATA__`, `window.__NUXT__`, `window.__remixContext`, `window.__GATSBY`, `window.htmx`, `window.Alpine`, `window.Turbo`, `window.jQuery`, `window.ga`, `window.gtag`, `window.dataLayer`, `window.fbq`, `window.plausible`, `window._paq`, `window.clarity`, and `window.webpackJsonp`. Extracts runtime versions from `React.version`, `Vue.version`, `angular.version.full`, `jQuery.fn.jquery`, `jQuery.ui.version`, and `_.VERSION`.
+- **DOM attribute probes** (page-guard) — scans for framework signatures in the DOM: `data-reactroot`, `data-reactid`, `data-react-helmet` (React); `ng-version` with version extraction (Angular); `data-v-`, `data-vue-app`, `#__vue_app__` (Vue); `data-svelte` (Svelte); `#__next` (Next.js), `#__nuxt` (Nuxt), `#___gatsby` (Gatsby); `data-turbo`, `data-turbo-frame` (Turbo); `data-controller` (Stimulus); `x-data`, `x-init`, `x-bind` (Alpine.js); `hx-get`, `hx-post`, `hx-trigger` (HTMX); `astro-island`, `astro-slot` (Astro).
+- **HTML comment/content probes** (page-guard) — scans the first 8 KB of HTML for embedded signatures like WordPress comments, Drupal footprints, Hugo generator tags, and Vite client scripts.
+- **Script/link URL patterns** (page-guard) — scans `document.scripts` and stylesheets using precise CDN and path patterns (70+ patterns) to avoid false positives. Patterns target specific CDN hostnames (`code.jquery.com`, `cdn.jsdelivr.net/npm/vue`, `unpkg.com/react`, `stackpath.bootstrapcdn.com`) and unambiguous path segments (`/react.`, `/vue@`, `/_next/`, `bootstrap.min.js`).
+- **Script URL version extraction** (page-guard) — parses version numbers from script URLs using the pattern `/@-<semver>` (e.g., `jquery-3.7.1.min.js` → jQuery 3.7.1, `vue@3.4.21` → Vue 3.4.21). Updates any previously version-less finding with the discovered version.
+- **Response headers** (background) — extracts technology from `X-Powered-By`, `Server`, `X-Generator`, `X-Drupal-Cache`, `X-Drupal-Dynamic-Cache`, `X-WordPress`, `X-Pingback`, `X-Shopify-Stage`, `X-Shopid`, `X-ASPNet-Version`, `X-ASPNetMvc-Version`, `X-Varnish`, `Via`, and `X-Turbo-Charged-By` headers.
+- **Set-Cookie fingerprinting** (background) — identifies server-side technologies from cookie names: `PHPSESSID` (PHP), `ASP.NET_SessionId` (ASP.NET), `JSESSIONID` (Java Servlet), `laravel_session`/`XSRF-TOKEN` (Laravel), `csrftoken`/`django_language` (Django), `connect.sid` (Express), `_rails-session`/`rack.session` (Rails), `wp-settings-*`/`wordpress_logged_in`/`wordpress_test_cookie` (WordPress), `_shopify_s`/`_shopify_y` (Shopify), `drupal` (Drupal), `joomla_user_state` (Joomla).
+- **Tailwind CSS heuristic** (page-guard) — detects Tailwind by counting elements with characteristic utility classes (`flex`, `grid`, `text-*`, `bg-*`, `px-*`, `py-*`, `mt-*`, `mb-*`); reports when five or more matches are found.
 
 **Detection catalog:**
 
-- **CMS** — WordPress, Drupal, Joomla, Shopify, Squarespace, Wix, Ghost, Webflow.
-- **Frameworks** — React, Vue, Angular, jQuery, Next.js, Nuxt, Svelte, Ember, Backbone.
-- **Analytics** — Google Analytics, Google Tag Manager, Facebook Pixel, Hotjar, Mixpanel, Segment, Heap, Amplitude.
-- **Server** — PHP, Express, Nginx, Apache, ASP.NET, Cloudflare, OpenResty, IIS, Gunicorn, Uvicorn.
+- **CMS** — WordPress, Drupal, Joomla, Shopify, Squarespace, Wix, Ghost, Webflow, Hugo, Jekyll, Contentful, Strapi, Sanity, Prismic.
+- **Frameworks / Libraries** — React, Preact, Vue, Angular, AngularJS, jQuery, jQuery UI, Lodash, Underscore, Next.js, Nuxt, Gatsby, Remix, Astro, Svelte, SvelteKit, Ember, Backbone, Alpine.js, HTMX, Turbo, Stimulus, Lit, Stencil, Bootstrap, Tailwind CSS, Foundation, Material UI, Vite, Webpack.
+- **Analytics** — Google Analytics, Google Tag Manager, Facebook Pixel, Hotjar, Mixpanel, Segment, Heap, Amplitude, Plausible, Matomo, Microsoft Clarity.
+- **Server** — PHP, Express, Nginx, Apache, ASP.NET, Cloudflare, OpenResty, IIS, Gunicorn, Uvicorn, Kestrel, Cowboy, Jetty, Tomcat, LiteSpeed, Caddy, Deno, Tornado, Werkzeug, Flask, Django, Laravel, Ruby on Rails, Phusion Passenger, Varnish, Next.js (server), Nuxt (server), Java Servlet.
 
-Each finding includes an **attack-surface note** summarizing relevant risks. For example: WordPress findings note XML-RPC and plugin/theme CVE exposure; jQuery findings flag DOM XSS via `$.html()` and version-specific CVEs; React findings highlight `dangerouslySetInnerHTML` and client-side state in DevTools; analytics findings warn about PII leakage through query strings and custom dimensions; server header findings flag version disclosure and known CVE risk.
+Each finding includes an **attack-surface note** summarizing relevant risks. For example: WordPress findings note XML-RPC and plugin/theme CVE exposure; jQuery findings flag DOM XSS via `$.html()` and version-specific CVEs; AngularJS findings highlight EOL status and known sandbox escapes; HTMX findings warn about hx-* attribute injection; Bootstrap findings reference XSS in tooltip/popover for older versions; cookie findings identify the server-side stack even when response headers are stripped; analytics findings warn about PII leakage through query strings and custom dimensions; server header findings flag version disclosure and known CVE risk.
 
 ### OSINT Tab
 
-Integrates with **crt.sh**, a public certificate transparency log search engine, to discover SSL certificates, subdomains, and exposed internal domain names associated with a target domain. Searches open in a new browser tab — no API keys or accounts required.
+Integrates with two public OSINT search engines — **crt.sh** and **Shodan** — to perform external reconnaissance on domains and hosts. Searches open in a new browser tab; no API keys or accounts are required.
 
-The OSINT panel provides:
+The OSINT panel is divided into two sections:
+
+**crt.sh — Certificate Transparency**
 
 - **One-click search** — the current page's domain is shown with a "Search crt.sh" button that opens `https://crt.sh/?q=<domain>` in a new tab.
 - **Manual domain input** — a text field for searching arbitrary domains not tied to the current page.
+- Certificate transparency logs reveal every SSL/TLS certificate ever issued for a domain, which is useful for discovering subdomains (including staging, internal, and forgotten environments), identifying certificate misconfigurations, and mapping the full scope of an organization's public-facing infrastructure.
 
-In addition to the dedicated tab, crt.sh search icons appear inline across other panels:
+**Shodan — Internet-Wide Scan Data**
 
-- **Blocks panel** — a magnifying glass icon next to each observed hostname in the hostname capture list (when red-team mode is enabled).
-- **Exfil panel** — a magnifying glass icon next to each third-party host in the exfiltration event stream, alongside the existing "allow" button.
+- **One-click search** — the current page's domain is shown with a "Search Shodan" button that opens `https://www.shodan.io/search?query=<domain>` in a new tab.
+- **Manual query input** — a text field for searching arbitrary domains or IP addresses.
+- Shodan indexes internet-facing hosts and reveals open ports, running services, SSL certificate details, banner data, known vulnerabilities, and organizational metadata. Useful for mapping exposed infrastructure and identifying misconfigured or forgotten services.
 
-Certificate transparency logs reveal every SSL/TLS certificate ever issued for a domain, which is useful for discovering subdomains (including staging, internal, and forgotten environments), identifying certificate misconfigurations, and mapping the full scope of an organization's public-facing infrastructure.
+In addition to the dedicated tab, search icons appear inline across other panels:
+
+- **Blocks panel** — a magnifying glass (crt.sh) and globe (Shodan) icon next to each observed hostname in the hostname capture list (when red-team mode is enabled).
+- **Exfil panel** — a magnifying glass (crt.sh) and globe (Shodan) icon next to each third-party host in the exfiltration event stream, alongside the existing "allow" button.
 
 ### Request Repeater
 

@@ -115,6 +115,15 @@
       if (activeTab === "recon") renderActivePanel();
       return;
     }
+    if (data.type === "tech-version") {
+      try {
+        chrome.runtime.sendMessage({
+          type: "BOXEDIN_UPDATE_TECH_VERSION", name: data.name, version: data.version
+        }, function () { if (chrome.runtime.lastError) {} });
+      } catch (e) { /* ignore */ }
+      if (activeTab === "recon") renderActivePanel();
+      return;
+    }
   }
 
   window.addEventListener("message", onPageGuardMessage);
@@ -226,6 +235,17 @@
   function openCrtShSearch(domain) {
     if (!domain) return;
     var url = "https://crt.sh/?q=" + encodeURIComponent(domain);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Open a Shodan search for a domain/IP in a new tab. */
+  function openShodanSearch(query) {
+    if (!query) return;
+    var url = "https://www.shodan.io/search?query=" + encodeURIComponent(query);
     try {
       chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
         if (chrome.runtime.lastError) { /* ignore */ }
@@ -514,7 +534,9 @@
             escapeAttr(hosts[h]) + '"' + (isBlocked ? " checked" : "") + ' />' +
             '<code>' + escapeHtml(hosts[h]) + '</code></label>' +
             (redteamEnabled ? '<button type="button" class="boxedin-rt__osint-btn" data-domain="' +
-            escapeAttr(hosts[h]) + '" title="Search crt.sh">\uD83D\uDD0D</button>' : '') +
+            escapeAttr(hosts[h]) + '" title="Search crt.sh">\uD83D\uDD0D</button>' +
+            '<button type="button" class="boxedin-rt__shodan-btn" data-query="' +
+            escapeAttr(hosts[h]) + '" title="Search Shodan">\uD83C\uDF10</button>' : '') +
             '</li>');
         }
         parts.push('</ul>');
@@ -601,6 +623,17 @@
               openCrtShSearch(btn.getAttribute("data-domain"));
             });
           })(osintBtns[ob]);
+        }
+
+        var shodanBtns = root.querySelectorAll(".boxedin-stats__hosts-list .boxedin-rt__shodan-btn");
+        for (var sb = 0; sb < shodanBtns.length; sb++) {
+          (function (btn) {
+            btn.addEventListener("click", function (ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              openShodanSearch(btn.getAttribute("data-query"));
+            });
+          })(shodanBtns[sb]);
         }
       }
     } else {
@@ -811,6 +844,8 @@
           escapeAttr(evtHost) + '" title="Add to exfil allowlist">allow</button>');
         parts.push(' <button type="button" class="boxedin-rt__osint-btn" data-domain="' +
           escapeAttr(evtHost) + '" title="Search crt.sh">\uD83D\uDD0D</button>');
+        parts.push(' <button type="button" class="boxedin-rt__shodan-btn" data-query="' +
+          escapeAttr(evtHost) + '" title="Search Shodan">\uD83C\uDF10</button>');
       }
       parts.push('</span>' +
         '<span class="boxedin-rt__event-ts">' + escapeHtml(formatTime(evt.ts)) + '</span>' +
@@ -909,6 +944,17 @@
           openCrtShSearch(btn.getAttribute("data-domain"));
         });
       })(exfilOsintBtns[eo]);
+    }
+
+    var exfilShodanBtns = root.querySelectorAll(".boxedin-rt__stream .boxedin-rt__shodan-btn");
+    for (var es = 0; es < exfilShodanBtns.length; es++) {
+      (function (btn) {
+        btn.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openShodanSearch(btn.getAttribute("data-query"));
+        });
+      })(exfilShodanBtns[es]);
     }
   }
 
@@ -1189,6 +1235,31 @@
 
     parts.push('</div>');
 
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Shodan — Internet-Wide Scan Data</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Search Shodan for open ports, services, banners, SSL info, and known vulnerabilities on a host.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-shodan-btn" data-query="' +
+        escapeAttr(pageDomain) + '">Search Shodan</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-shodan-input" placeholder="example.com or 1.2.3.4" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-shodan-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
     renderShell(parts.join(""));
     wireOsintPanel();
   }
@@ -1214,6 +1285,29 @@
           e.preventDefault();
           var val = manualInput.value.trim();
           if (val) openCrtShSearch(val);
+        }
+      });
+    }
+
+    var shodanBtn = root.querySelector(".boxedin-rt__osint-shodan-btn");
+    if (shodanBtn) {
+      shodanBtn.addEventListener("click", function () {
+        openShodanSearch(shodanBtn.getAttribute("data-query"));
+      });
+    }
+
+    var shodanManualBtn = root.querySelector(".boxedin-rt__osint-shodan-manual-btn");
+    var shodanManualInput = root.querySelector(".boxedin-rt__osint-shodan-input");
+    if (shodanManualBtn && shodanManualInput) {
+      shodanManualBtn.addEventListener("click", function () {
+        var val = shodanManualInput.value.trim();
+        if (val) openShodanSearch(val);
+      });
+      shodanManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = shodanManualInput.value.trim();
+          if (val) openShodanSearch(val);
         }
       });
     }

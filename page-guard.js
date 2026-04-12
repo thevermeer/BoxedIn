@@ -932,15 +932,42 @@
         "Wix": "Client-side data exposure via Wix APIs",
         "Ghost": "Admin panel exposure, API key leakage",
         "Webflow": "Exposed site data in client JS",
+        "Hugo": "Static site; check for exposed config or draft content",
+        "Jekyll": "Static site; check for exposed _config.yml or draft pages",
+        "Contentful": "CDN-delivered; check API keys in client JS",
+        "Strapi": "REST/GraphQL API; check for open endpoints and default admin",
+        "Sanity": "Check for exposed project ID and dataset in client JS",
+        "Prismic": "Check for exposed API endpoint and repository name",
         "React": "Client-side state in DevTools, check for dangerouslySetInnerHTML",
+        "Preact": "Lightweight React alt; same dangerouslySetInnerHTML risks",
         "Vue": "Vue DevTools state inspection, v-html XSS risk",
         "Angular": "Template injection if user input in templates, zone.js overhead",
+        "AngularJS": "EOL framework; known prototype pollution and sandbox escapes",
         "jQuery": "DOM XSS via $.html(), check version for known CVEs",
+        "jQuery UI": "Check version for known XSS CVEs in dialog/autocomplete",
+        "Lodash": "Prototype pollution in older versions (< 4.17.12)",
+        "Underscore": "Template injection if user input in _.template()",
         "Next.js": "API routes may leak server config, check _next/data exposure",
         "Nuxt": "Server-side config leakage, __NUXT__ state exposure",
+        "Gatsby": "GraphQL data layer may expose internal schema at /__graphql",
+        "Remix": "Loader data exposed in __remixContext, check for sensitive data",
+        "Astro": "Partial hydration; check for exposed island props",
         "Svelte": "Minimal attack surface; check {@html} usage",
+        "SvelteKit": "Server routes may leak config; check +page.server data",
         "Ember": "Prototype pollution history, check for triple-stash {{{",
         "Backbone": "Underscore template injection if user input in templates",
+        "Alpine.js": "x-data expressions evaluated as JS; XSS via user input in attributes",
+        "HTMX": "Server-driven; hx-* attributes can trigger requests to attacker-controlled URLs",
+        "Turbo": "Hotwire Turbo; frame injection if src attributes are user-controlled",
+        "Stimulus": "Hotwire Stimulus; data-controller values map to JS classes",
+        "Lit": "Web components; check for unsanitized HTML in render()",
+        "Stencil": "Web components; check for innerHTML usage in JSX",
+        "Bootstrap": "Check version for XSS in tooltip/popover (< 3.4.0, < 4.3.1)",
+        "Tailwind CSS": "Utility framework; low direct risk but check for purge misconfig",
+        "Foundation": "Check version for known XSS in JS components",
+        "Material UI": "React component library; check for injection in dynamic props",
+        "Vite": "Dev server may be exposed; check for /@vite/client in production",
+        "Webpack": "Check for exposed source maps (.map files) and devServer",
         "Google Analytics": "PII leakage via query strings and custom dimensions",
         "Google Tag Manager": "Tag injection if GTM container is misconfigured",
         "Facebook Pixel": "Custom event data may leak PII to third party",
@@ -949,12 +976,19 @@
         "Segment": "Data routing to multiple third-party destinations",
         "Heap": "Auto-capture may record sensitive input fields",
         "Amplitude": "User properties and event data may leak PII",
+        "Plausible": "Privacy-focused; minimal attack surface",
+        "Matomo": "Self-hosted analytics; check for exposed admin panel",
+        "Clarity": "Microsoft Clarity; session replay may capture sensitive fields",
         "PHP": "Version disclosure, check for known CVEs",
         "Express": "Default error pages leak stack traces",
         "Nginx": "Version disclosure, misconfiguration checks",
         "Apache": "Version disclosure, mod_status/mod_info exposure",
         "ASP.NET": "ViewState deserialization, debug mode exposure",
-        "Cloudflare": "CDN — origin IP may still be discoverable"
+        "Cloudflare": "CDN — origin IP may still be discoverable",
+        "Java Servlet": "Check for exposed stack traces and JSESSIONID fixation",
+        "Laravel": "Check for APP_DEBUG=true, exposed .env, debug bar",
+        "Django": "Check for DEBUG=True, exposed admin panel at /admin/",
+        "Ruby on Rails": "Check for exposed routes, mass assignment, debug mode"
       };
 
       function emit(category, name, version, evidence) {
@@ -971,22 +1005,31 @@
         });
       }
 
-      var metas = document.querySelectorAll('meta[name="generator"], meta[content]');
+      /* ── Meta tags ────────────────────────────────────────────── */
+
+      var metas = document.querySelectorAll('meta[name="generator"], meta[name="application-name"], meta[content]');
       for (var mi = 0; mi < metas.length; mi++) {
         var metaName = (metas[mi].getAttribute("name") || "").toLowerCase();
         var metaContent = metas[mi].getAttribute("content") || "";
-        if (metaName === "generator") {
+        if (metaName === "generator" || metaName === "application-name") {
           var mc = metaContent.toLowerCase();
           if (mc.indexOf("wordpress") !== -1) emit("cms", "WordPress", metaContent.replace(/WordPress\s*/i, ""), "meta generator");
-          else if (mc.indexOf("drupal") !== -1) emit("cms", "Drupal", null, "meta generator");
-          else if (mc.indexOf("joomla") !== -1) emit("cms", "Joomla", null, "meta generator");
+          else if (mc.indexOf("drupal") !== -1) emit("cms", "Drupal", (metaContent.match(/Drupal\s+([\d.]+)/i) || [])[1] || null, "meta generator");
+          else if (mc.indexOf("joomla") !== -1) emit("cms", "Joomla", (metaContent.match(/Joomla[!]?\s*([\d.]+)/i) || [])[1] || null, "meta generator");
           else if (mc.indexOf("ghost") !== -1) emit("cms", "Ghost", null, "meta generator");
           else if (mc.indexOf("webflow") !== -1) emit("cms", "Webflow", null, "meta generator");
           else if (mc.indexOf("squarespace") !== -1) emit("cms", "Squarespace", null, "meta generator");
           else if (mc.indexOf("wix") !== -1) emit("cms", "Wix", null, "meta generator");
           else if (mc.indexOf("shopify") !== -1) emit("cms", "Shopify", null, "meta generator");
+          else if (mc.indexOf("hugo") !== -1) emit("cms", "Hugo", (metaContent.match(/Hugo\s+([\d.]+)/i) || [])[1] || null, "meta generator");
+          else if (mc.indexOf("jekyll") !== -1) emit("cms", "Jekyll", (metaContent.match(/Jekyll\s+v?([\d.]+)/i) || [])[1] || null, "meta generator");
+          else if (mc.indexOf("gatsby") !== -1) emit("framework", "Gatsby", null, "meta generator");
+          else if (mc.indexOf("next.js") !== -1) emit("framework", "Next.js", null, "meta generator");
+          else if (mc.indexOf("nuxt") !== -1) emit("framework", "Nuxt", null, "meta generator");
         }
       }
+
+      /* ── Window globals ───────────────────────────────────────── */
 
       var globalProbes = [
         { test: "wp", category: "cms", name: "WordPress" },
@@ -996,16 +1039,31 @@
         { test: "__NEXT_DATA__", category: "framework", name: "Next.js" },
         { test: "__NUXT__", category: "framework", name: "Nuxt" },
         { test: "__SVELTE__", category: "framework", name: "Svelte" },
+        { test: "__sveltekit", category: "framework", name: "SvelteKit" },
+        { test: "__remixContext", category: "framework", name: "Remix" },
+        { test: "__GATSBY", category: "framework", name: "Gatsby" },
+        { test: "__astro_tag_component__", category: "framework", name: "Astro" },
         { test: "Ember", category: "framework", name: "Ember" },
         { test: "Backbone", category: "framework", name: "Backbone" },
+        { test: "htmx", category: "framework", name: "HTMX", check: function () { try { return window.htmx && typeof window.htmx.process === "function"; } catch (e) { return false; } } },
+        { test: "Alpine", category: "framework", name: "Alpine.js", check: function () { try { return window.Alpine && typeof window.Alpine.start === "function"; } catch (e) { return false; } } },
+        { test: "Turbo", category: "framework", name: "Turbo", check: function () { try { return window.Turbo && typeof window.Turbo.visit === "function"; } catch (e) { return false; } } },
+        { test: "Stimulus", category: "framework", name: "Stimulus", check: function () { try { return window.Stimulus && typeof window.Stimulus.register === "function"; } catch (e) { return false; } } },
+        { test: "preact", category: "framework", name: "Preact", check: function () { try { return window.preact && typeof window.preact.h === "function"; } catch (e) { return false; } } },
         { test: "ga", category: "analytics", name: "Google Analytics" },
+        { test: "gtag", category: "analytics", name: "Google Analytics", check: function () { try { return typeof window.gtag === "function"; } catch (e) { return false; } } },
         { test: "google_tag_manager", category: "analytics", name: "Google Tag Manager" },
+        { test: "dataLayer", category: "analytics", name: "Google Tag Manager", check: function () { try { return Array.isArray(window.dataLayer) && window.dataLayer.length > 0; } catch (e) { return false; } } },
         { test: "fbq", category: "analytics", name: "Facebook Pixel" },
         { test: "hj", category: "analytics", name: "Hotjar" },
         { test: "mixpanel", category: "analytics", name: "Mixpanel" },
         { test: "analytics", category: "analytics", name: "Segment", check: function () { try { return window.analytics && typeof window.analytics.identify === "function"; } catch (e) { return false; } } },
         { test: "heap", category: "analytics", name: "Heap", check: function () { try { return window.heap && typeof window.heap.track === "function"; } catch (e) { return false; } } },
-        { test: "amplitude", category: "analytics", name: "Amplitude", check: function () { try { return window.amplitude && typeof window.amplitude.getInstance === "function"; } catch (e) { return false; } } }
+        { test: "amplitude", category: "analytics", name: "Amplitude", check: function () { try { return window.amplitude && typeof window.amplitude.getInstance === "function"; } catch (e) { return false; } } },
+        { test: "plausible", category: "analytics", name: "Plausible", check: function () { try { return typeof window.plausible === "function"; } catch (e) { return false; } } },
+        { test: "_paq", category: "analytics", name: "Matomo", check: function () { try { return Array.isArray(window._paq); } catch (e) { return false; } } },
+        { test: "clarity", category: "analytics", name: "Clarity", check: function () { try { return typeof window.clarity === "function"; } catch (e) { return false; } } },
+        { test: "_", category: "framework", name: "Lodash", check: function () { try { return window._ && window._.VERSION && typeof window._.map === "function"; } catch (e) { return false; } } }
       ];
       for (var gi = 0; gi < globalProbes.length; gi++) {
         var gp = globalProbes[gi];
@@ -1030,9 +1088,10 @@
       } catch (eV) { /* ignore */ }
       try {
         if (window.angular || document.querySelector("[ng-app], [ng-controller], [data-ng-app]")) {
-          var av = null;
-          try { av = window.angular && window.angular.version ? window.angular.version.full : null; } catch (e) {}
-          emit("framework", "Angular", av, "window global");
+          var angV = null;
+          try { angV = window.angular && window.angular.version ? window.angular.version.full : null; } catch (e) {}
+          if (angV) emit("framework", "AngularJS", angV, "window global");
+          else emit("framework", "Angular", null, "window global");
         }
       } catch (eA) { /* ignore */ }
       try {
@@ -1042,32 +1101,147 @@
           emit("framework", "jQuery", jqv, "window global");
         }
       } catch (eJ) { /* ignore */ }
+      try {
+        if (window.jQuery && window.jQuery.ui) {
+          emit("framework", "jQuery UI", window.jQuery.ui.version || null, "window global");
+        }
+      } catch (eJU) { /* ignore */ }
+      try {
+        if (window._ && window._.VERSION) {
+          emit("framework", "Lodash", window._.VERSION, "window global");
+        } else if (window._ && typeof window._.template === "function" && !window._.VERSION) {
+          emit("framework", "Underscore", null, "window global");
+        }
+      } catch (eL) { /* ignore */ }
+
+      /* ── DOM attribute probes ─────────────────────────────────── */
+
+      try {
+        if (document.querySelector("[data-reactroot], [data-reactid]")) emit("framework", "React", null, "DOM attribute");
+        if (document.querySelector("[data-react-helmet]")) emit("framework", "React", null, "DOM attribute");
+      } catch (eD1) { /* ignore */ }
+      try {
+        var ngVer = document.querySelector("[ng-version]");
+        if (ngVer) emit("framework", "Angular", ngVer.getAttribute("ng-version"), "DOM attribute");
+      } catch (eD2) { /* ignore */ }
+      try {
+        if (document.querySelector("[data-v-], [data-vue-app]") || document.querySelector("#__nuxt") || document.querySelector("#__vue_app__")) emit("framework", "Vue", null, "DOM attribute");
+      } catch (eD3) { /* ignore */ }
+      try {
+        if (document.querySelector("[data-svelte], .s-")) emit("framework", "Svelte", null, "DOM attribute");
+      } catch (eD4) { /* ignore */ }
+      try {
+        if (document.getElementById("__next")) emit("framework", "Next.js", null, "DOM element");
+        if (document.getElementById("__nuxt") || document.getElementById("__layout")) emit("framework", "Nuxt", null, "DOM element");
+        if (document.getElementById("___gatsby")) emit("framework", "Gatsby", null, "DOM element");
+      } catch (eD5) { /* ignore */ }
+      try {
+        if (document.querySelector("[data-turbo], [data-turbo-frame]")) emit("framework", "Turbo", null, "DOM attribute");
+        if (document.querySelector("[data-controller]")) emit("framework", "Stimulus", null, "DOM attribute");
+      } catch (eD6) { /* ignore */ }
+      try {
+        if (document.querySelector("[x-data], [x-init], [x-bind]")) emit("framework", "Alpine.js", null, "DOM attribute");
+      } catch (eD7) { /* ignore */ }
+      try {
+        if (document.querySelector("[hx-get], [hx-post], [hx-trigger], [data-hx-get]")) emit("framework", "HTMX", null, "DOM attribute");
+      } catch (eD8) { /* ignore */ }
+      try {
+        if (document.querySelector("astro-island, astro-slot")) emit("framework", "Astro", null, "DOM element");
+      } catch (eD9) { /* ignore */ }
+
+      /* ── HTML comment probes ──────────────────────────────────── */
+
+      try {
+        var html = document.documentElement.outerHTML.slice(0, 8000);
+        if (/<!--\s*This is a WordPress/.test(html) || /wp-content/i.test(html)) emit("cms", "WordPress", null, "HTML content");
+        if (/Powered by Drupal/i.test(html)) emit("cms", "Drupal", null, "HTML comment");
+        if (/generator" content="Hugo/i.test(html)) emit("cms", "Hugo", null, "HTML content");
+        if (/Vite|@vite\/client/i.test(html)) emit("framework", "Vite", null, "HTML content");
+      } catch (eHC) { /* ignore */ }
+
+      /* ── Script/link URL patterns (precise) ───────────────────── */
 
       var scriptPatterns = [
         { pattern: "wp-content/", category: "cms", name: "WordPress" },
         { pattern: "wp-includes/", category: "cms", name: "WordPress" },
+        { pattern: "wp-json/", category: "cms", name: "WordPress" },
         { pattern: "cdn.shopify.com", category: "cms", name: "Shopify" },
+        { pattern: "sdks.shopifycdn.com", category: "cms", name: "Shopify" },
         { pattern: "squarespace.com", category: "cms", name: "Squarespace" },
+        { pattern: "squarespace-cdn.com", category: "cms", name: "Squarespace" },
         { pattern: "static.wixstatic.com", category: "cms", name: "Wix" },
         { pattern: "parastorage.com", category: "cms", name: "Wix" },
         { pattern: "ghost.io", category: "cms", name: "Ghost" },
         { pattern: "webflow.com", category: "cms", name: "Webflow" },
-        { pattern: "react", category: "framework", name: "React" },
-        { pattern: "vue", category: "framework", name: "Vue" },
-        { pattern: "angular", category: "framework", name: "Angular" },
-        { pattern: "jquery", category: "framework", name: "jQuery" },
-        { pattern: "ember", category: "framework", name: "Ember" },
-        { pattern: "backbone", category: "framework", name: "Backbone" },
-        { pattern: "svelte", category: "framework", name: "Svelte" },
+        { pattern: "assets.contentful.com", category: "cms", name: "Contentful" },
+        { pattern: "cdn.contentful.com", category: "cms", name: "Contentful" },
+        { pattern: "cdn.sanity.io", category: "cms", name: "Sanity" },
+        { pattern: "prismic.io", category: "cms", name: "Prismic" },
+        { pattern: "/react.", category: "framework", name: "React" },
+        { pattern: "/react-dom.", category: "framework", name: "React" },
+        { pattern: "unpkg.com/react", category: "framework", name: "React" },
+        { pattern: "cdnjs.cloudflare.com/ajax/libs/react", category: "framework", name: "React" },
+        { pattern: "/preact.", category: "framework", name: "Preact" },
+        { pattern: "unpkg.com/preact", category: "framework", name: "Preact" },
+        { pattern: "/vue.", category: "framework", name: "Vue" },
+        { pattern: "/vue@", category: "framework", name: "Vue" },
+        { pattern: "unpkg.com/vue", category: "framework", name: "Vue" },
+        { pattern: "cdn.jsdelivr.net/npm/vue", category: "framework", name: "Vue" },
+        { pattern: "/angular.", category: "framework", name: "Angular" },
+        { pattern: "/angular@", category: "framework", name: "Angular" },
+        { pattern: "ajax.googleapis.com/ajax/libs/angularjs", category: "framework", name: "AngularJS" },
+        { pattern: "/jquery.", category: "framework", name: "jQuery" },
+        { pattern: "/jquery-", category: "framework", name: "jQuery" },
+        { pattern: "/jquery@", category: "framework", name: "jQuery" },
+        { pattern: "code.jquery.com", category: "framework", name: "jQuery" },
+        { pattern: "ajax.googleapis.com/ajax/libs/jquery", category: "framework", name: "jQuery" },
+        { pattern: "/jquery-ui.", category: "framework", name: "jQuery UI" },
+        { pattern: "/jquery.ui.", category: "framework", name: "jQuery UI" },
+        { pattern: "/ember.", category: "framework", name: "Ember" },
+        { pattern: "/backbone.", category: "framework", name: "Backbone" },
+        { pattern: "/backbone-", category: "framework", name: "Backbone" },
+        { pattern: "/svelte", category: "framework", name: "Svelte" },
+        { pattern: "/alpine.", category: "framework", name: "Alpine.js" },
+        { pattern: "unpkg.com/alpinejs", category: "framework", name: "Alpine.js" },
+        { pattern: "cdn.jsdelivr.net/npm/alpinejs", category: "framework", name: "Alpine.js" },
+        { pattern: "/htmx.", category: "framework", name: "HTMX" },
+        { pattern: "unpkg.com/htmx.org", category: "framework", name: "HTMX" },
+        { pattern: "/turbo.", category: "framework", name: "Turbo" },
+        { pattern: "unpkg.com/@hotwired/turbo", category: "framework", name: "Turbo" },
+        { pattern: "/stimulus.", category: "framework", name: "Stimulus" },
+        { pattern: "unpkg.com/@hotwired/stimulus", category: "framework", name: "Stimulus" },
+        { pattern: "/lit-html", category: "framework", name: "Lit" },
+        { pattern: "/lit-element", category: "framework", name: "Lit" },
+        { pattern: "/lit@", category: "framework", name: "Lit" },
+        { pattern: "/stencil.", category: "framework", name: "Stencil" },
+        { pattern: "/lodash.", category: "framework", name: "Lodash" },
+        { pattern: "/lodash@", category: "framework", name: "Lodash" },
+        { pattern: "/underscore.", category: "framework", name: "Underscore" },
+        { pattern: "/_next/", category: "framework", name: "Next.js" },
+        { pattern: "/_nuxt/", category: "framework", name: "Nuxt" },
+        { pattern: "/@vite/client", category: "framework", name: "Vite" },
+        { pattern: "/vite.", category: "framework", name: "Vite" },
+        { pattern: "bootstrap.min.js", category: "framework", name: "Bootstrap" },
+        { pattern: "bootstrap.bundle.", category: "framework", name: "Bootstrap" },
+        { pattern: "cdn.jsdelivr.net/npm/bootstrap", category: "framework", name: "Bootstrap" },
+        { pattern: "stackpath.bootstrapcdn.com", category: "framework", name: "Bootstrap" },
+        { pattern: "foundation.min.js", category: "framework", name: "Foundation" },
+        { pattern: "cdn.jsdelivr.net/npm/foundation-sites", category: "framework", name: "Foundation" },
+        { pattern: "material-ui", category: "framework", name: "Material UI" },
+        { pattern: "@mui/material", category: "framework", name: "Material UI" },
         { pattern: "googletagmanager.com", category: "analytics", name: "Google Tag Manager" },
         { pattern: "google-analytics.com", category: "analytics", name: "Google Analytics" },
         { pattern: "gtag/js", category: "analytics", name: "Google Analytics" },
+        { pattern: "googletagservices.com", category: "analytics", name: "Google Analytics" },
         { pattern: "connect.facebook.net", category: "analytics", name: "Facebook Pixel" },
         { pattern: "hotjar.com", category: "analytics", name: "Hotjar" },
         { pattern: "cdn.mxpnl.com", category: "analytics", name: "Mixpanel" },
         { pattern: "cdn.segment.com", category: "analytics", name: "Segment" },
         { pattern: "cdn.heapanalytics.com", category: "analytics", name: "Heap" },
-        { pattern: "cdn.amplitude.com", category: "analytics", name: "Amplitude" }
+        { pattern: "cdn.amplitude.com", category: "analytics", name: "Amplitude" },
+        { pattern: "plausible.io", category: "analytics", name: "Plausible" },
+        { pattern: "matomo.", category: "analytics", name: "Matomo" },
+        { pattern: "clarity.ms", category: "analytics", name: "Clarity" }
       ];
       var scripts = document.scripts || [];
       for (var si = 0; si < scripts.length; si++) {
@@ -1079,16 +1253,76 @@
           }
         }
       }
+
+      /* ── Stylesheet URL patterns ──────────────────────────────── */
+
+      var cssPatterns = [
+        { pattern: "wp-content/", category: "cms", name: "WordPress" },
+        { pattern: "wp-includes/", category: "cms", name: "WordPress" },
+        { pattern: "cdn.shopify.com", category: "cms", name: "Shopify" },
+        { pattern: "squarespace.com", category: "cms", name: "Squarespace" },
+        { pattern: "static.wixstatic.com", category: "cms", name: "Wix" },
+        { pattern: "webflow.com", category: "cms", name: "Webflow" },
+        { pattern: "bootstrap.min.css", category: "framework", name: "Bootstrap" },
+        { pattern: "stackpath.bootstrapcdn.com", category: "framework", name: "Bootstrap" },
+        { pattern: "cdn.jsdelivr.net/npm/bootstrap", category: "framework", name: "Bootstrap" },
+        { pattern: "foundation.min.css", category: "framework", name: "Foundation" },
+        { pattern: "tailwindcss", category: "framework", name: "Tailwind CSS" }
+      ];
       var links = document.querySelectorAll('link[rel="stylesheet"]');
       for (var li = 0; li < links.length; li++) {
         var lHref = (links[li].href || "").toLowerCase();
         if (!lHref) continue;
-        for (var lp = 0; lp < scriptPatterns.length; lp++) {
-          if (lHref.indexOf(scriptPatterns[lp].pattern) !== -1) {
-            emit(scriptPatterns[lp].category, scriptPatterns[lp].name, null, "link href");
+        for (var lp = 0; lp < cssPatterns.length; lp++) {
+          if (lHref.indexOf(cssPatterns[lp].pattern) !== -1) {
+            emit(cssPatterns[lp].category, cssPatterns[lp].name, null, "link href");
           }
         }
       }
+
+      /* ── Tailwind detection via class heuristic ───────────────── */
+
+      try {
+        var twClasses = document.querySelectorAll("[class*='flex '], [class*='grid '], [class*='text-'], [class*='bg-'], [class*='px-'], [class*='py-'], [class*='mt-'], [class*='mb-']");
+        if (twClasses.length >= 5) emit("framework", "Tailwind CSS", null, "DOM classes heuristic");
+      } catch (eTW) { /* ignore */ }
+
+      /* ── Webpack detection via chunk comments/globals ──────────── */
+
+      try {
+        if (window.webpackJsonp || window.__webpack_require__ || window.webpackChunk) emit("framework", "Webpack", null, "window global");
+      } catch (eWP) { /* ignore */ }
+
+      /* ── Version extraction from script URLs ──────────────────── */
+
+      try {
+        var versionRe = /[\/\-@]([\d]+\.[\d]+\.[\d]+(?:[.\-][\w]+)?)\b/;
+        var versionTargets = {
+          "jquery": "jQuery", "vue": "Vue", "angular": "Angular", "angularjs": "AngularJS",
+          "react": "React", "preact": "Preact", "ember": "Ember", "backbone": "Backbone",
+          "lodash": "Lodash", "underscore": "Underscore", "bootstrap": "Bootstrap",
+          "alpine": "Alpine.js", "htmx": "HTMX", "lit": "Lit", "svelte": "Svelte"
+        };
+        for (var vi = 0; vi < scripts.length; vi++) {
+          var vSrc = (scripts[vi].src || "").toLowerCase();
+          if (!vSrc) continue;
+          var vtKeys = Object.keys(versionTargets);
+          for (var vk = 0; vk < vtKeys.length; vk++) {
+            if (vSrc.indexOf(vtKeys[vk]) !== -1) {
+              var vMatch = vSrc.match(versionRe);
+              if (vMatch && vMatch[1] && found[versionTargets[vtKeys[vk]]]) {
+                postRedteamToOverlay({
+                  source: "boxedin-page-guard",
+                  type: "tech-version",
+                  name: versionTargets[vtKeys[vk]],
+                  version: vMatch[1]
+                });
+              }
+            }
+          }
+        }
+      } catch (eVE) { /* ignore */ }
+
     } catch (e) { /* ignore */ }
   }
 

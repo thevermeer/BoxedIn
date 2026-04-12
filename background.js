@@ -994,6 +994,22 @@
       sendResponse({ ok: true });
       return true;
     }
+    if (msg && msg.type === "BOXEDIN_UPDATE_TECH_VERSION") {
+      var uvTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      if (uvTid >= 0 && msg.name && msg.version) {
+        var uvFindings = techFindingsByTab.get(uvTid);
+        if (uvFindings) {
+          for (var uvi = 0; uvi < uvFindings.length; uvi++) {
+            if (uvFindings[uvi].name === msg.name && !uvFindings[uvi].version) {
+              uvFindings[uvi].version = msg.version;
+              break;
+            }
+          }
+        }
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
     if (msg && msg.type === "BOXEDIN_GET_TECH_FINDINGS") {
       var gtTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
       sendResponse({ findings: techFindingsByTab.get(gtTid) || [] });
@@ -1316,7 +1332,23 @@
             "openresty": { category: "server", name: "OpenResty", notes: "Nginx-based, check for Lua script exposure" },
             "iis": { category: "server", name: "IIS", notes: "Version disclosure, check for known CVEs" },
             "gunicorn": { category: "server", name: "Gunicorn", notes: "Python WSGI server, check debug mode" },
-            "uvicorn": { category: "server", name: "Uvicorn", notes: "Python ASGI server, check debug mode" }
+            "uvicorn": { category: "server", name: "Uvicorn", notes: "Python ASGI server, check debug mode" },
+            "kestrel": { category: "server", name: "Kestrel", notes: ".NET server, check for exposed endpoints" },
+            "cowboy": { category: "server", name: "Cowboy", notes: "Erlang/Elixir server, check for version disclosure" },
+            "jetty": { category: "server", name: "Jetty", notes: "Java servlet container, check for known CVEs" },
+            "tomcat": { category: "server", name: "Tomcat", notes: "Default manager app, known CVEs, check /manager/html" },
+            "litespeed": { category: "server", name: "LiteSpeed", notes: "Version disclosure, check for admin console exposure" },
+            "caddy": { category: "server", name: "Caddy", notes: "Go server, check for exposed admin API" },
+            "deno": { category: "server", name: "Deno", notes: "Deno runtime, check for permissions leakage" },
+            "tornado": { category: "server", name: "Tornado", notes: "Python async server, check for debug mode" },
+            "werkzeug": { category: "server", name: "Werkzeug", notes: "Flask debug server — check for exposed debugger PIN" },
+            "flask": { category: "server", name: "Flask", notes: "Check for debug mode and exposed debugger" },
+            "django": { category: "server", name: "Django", notes: "Check for DEBUG=True and admin panel" },
+            "laravel": { category: "server", name: "Laravel", notes: "Check for APP_DEBUG=true and .env exposure" },
+            "rails": { category: "server", name: "Ruby on Rails", notes: "Check for exposed routes and debug mode" },
+            "phusion passenger": { category: "server", name: "Phusion Passenger", notes: "App server, check for version disclosure" },
+            "next.js": { category: "server", name: "Next.js", notes: "Check _next/data exposure and API routes" },
+            "nuxt": { category: "server", name: "Nuxt", notes: "Check __NUXT__ state and server route leakage" }
           };
 
           function pushTechIfNew(cat, tName, ver, ev, notes) {
@@ -1328,10 +1360,31 @@
             }
           }
 
+          var COOKIE_TECH_MAP = {
+            "phpsessid": { category: "server", name: "PHP", notes: "PHPSESSID cookie — PHP session" },
+            "asp.net_sessionid": { category: "server", name: "ASP.NET", notes: "ASP.NET_SessionId cookie" },
+            "jsessionid": { category: "server", name: "Java Servlet", notes: "JSESSIONID cookie — Java session" },
+            "laravel_session": { category: "server", name: "Laravel", notes: "laravel_session cookie" },
+            "xsrf-token": { category: "server", name: "Laravel", notes: "XSRF-TOKEN cookie (common in Laravel)" },
+            "_rails-session": { category: "server", name: "Ruby on Rails", notes: "Rails session cookie" },
+            "rack.session": { category: "server", name: "Ruby on Rails", notes: "Rack session cookie" },
+            "csrftoken": { category: "server", name: "Django", notes: "Django CSRF cookie" },
+            "django_language": { category: "server", name: "Django", notes: "Django language cookie" },
+            "connect.sid": { category: "server", name: "Express", notes: "Express/Connect session cookie" },
+            "_shopify_s": { category: "cms", name: "Shopify", notes: "Shopify session cookie" },
+            "_shopify_y": { category: "cms", name: "Shopify", notes: "Shopify analytics cookie" },
+            "wp-settings-": { category: "cms", name: "WordPress", notes: "WordPress settings cookie" },
+            "wordpress_logged_in": { category: "cms", name: "WordPress", notes: "WordPress auth cookie" },
+            "wordpress_test_cookie": { category: "cms", name: "WordPress", notes: "WordPress test cookie" },
+            "drupal": { category: "cms", name: "Drupal", notes: "Drupal session cookie" },
+            "joomla_user_state": { category: "cms", name: "Joomla", notes: "Joomla session cookie" }
+          };
+
           for (var hi = 0; hi < details.responseHeaders.length; hi++) {
             var hdr = details.responseHeaders[hi];
             var hName = hdr.name.toLowerCase();
             var hVal = hdr.value || "";
+
             if (hName === "x-powered-by" || hName === "server") {
               var hLower = hVal.toLowerCase();
               var thKeys = Object.keys(TECH_HEADER_MAP);
@@ -1339,6 +1392,47 @@
                 if (hLower.indexOf(thKeys[tk]) !== -1) {
                   var tm = TECH_HEADER_MAP[thKeys[tk]];
                   pushTechIfNew(tm.category, tm.name, hVal, hName + " header", tm.notes);
+                }
+              }
+            }
+
+            if (hName === "x-generator") {
+              pushTechIfNew("cms", hVal.split("/")[0].trim(), hVal, "X-Generator header", "");
+            }
+
+            if (hName === "x-drupal-cache" || hName === "x-drupal-dynamic-cache") {
+              pushTechIfNew("cms", "Drupal", null, hName + " header", "Drupalgeddon RCE history, module CVEs");
+            }
+            if (hName === "x-wordpress" || hName === "x-pingback") {
+              pushTechIfNew("cms", "WordPress", null, hName + " header", "XML-RPC, wp-login brute force, plugin/theme CVEs");
+            }
+            if (hName === "x-shopify-stage" || hName === "x-shopid") {
+              pushTechIfNew("cms", "Shopify", null, hName + " header", "Liquid template injection, API token leakage");
+            }
+
+            if (hName === "x-aspnet-version" || hName === "x-aspnetmvc-version") {
+              pushTechIfNew("server", "ASP.NET", hVal, hName + " header", "Version disclosure, ViewState deserialization");
+            }
+
+            if (hName === "x-varnish") {
+              pushTechIfNew("server", "Varnish", null, "X-Varnish header", "Cache server — check for cache poisoning");
+            }
+            if (hName === "via" && hVal.toLowerCase().indexOf("varnish") !== -1) {
+              pushTechIfNew("server", "Varnish", null, "Via header", "Cache server — check for cache poisoning");
+            }
+
+            if (hName === "x-turbo-charged-by") {
+              pushTechIfNew("server", "LiteSpeed", hVal, "X-Turbo-Charged-By header", "LiteSpeed cache detected");
+            }
+
+            if (hName === "set-cookie") {
+              var ckName = (hVal.split("=")[0] || "").trim().toLowerCase();
+              var ckKeys = Object.keys(COOKIE_TECH_MAP);
+              for (var ck = 0; ck < ckKeys.length; ck++) {
+                if (ckName.indexOf(ckKeys[ck]) !== -1 || ckName === ckKeys[ck]) {
+                  var cm = COOKIE_TECH_MAP[ckKeys[ck]];
+                  pushTechIfNew(cm.category, cm.name, null, "Set-Cookie: " + ckName, cm.notes);
+                  break;
                 }
               }
             }
