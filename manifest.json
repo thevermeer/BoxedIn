@@ -9,7 +9,8 @@
     "storage",
     "webRequest",
     "contextMenus",
-    "scripting"
+    "scripting",
+    "cookies"
   ],
   "action": {
     "default_title": "BoxedIn — click to turn off"

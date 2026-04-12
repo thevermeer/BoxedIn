@@ -149,6 +149,42 @@
         />
         <button type="button" id="addDnrFilter" class="btn">Add rule</button>
       </div>
+
+      <h2 class="section-title">Red-team tools</h2>
+      <p class="hint hint-tight">
+        Passive security analysis tools for red-team exercises. When enabled,
+        the overlay gains Auth, Exfil, and Inject tabs with live findings.
+        All analysis is local and passive — no traffic is modified.
+      </p>
+
+      <label class="row row-block">
+        <input type="checkbox" id="redteamEnabled" />
+        <span>Enable <strong>red-team analysis</strong> (adds Auth / Exfil / Inject
+          tabs to the overlay with cookie auditing, exfiltration monitoring,
+          CSP/CORS analysis, CSRF scanning, and XSS sink detection). Off by
+          default.</span>
+      </label>
+
+      <h3 class="section-subtitle">Exfiltration allowlist</h3>
+      <p class="hint hint-tight">
+        Hostnames in this list will not trigger exfiltration alerts (e.g.
+        your own API domains). The page's own origin is always allowed.
+      </p>
+      <ul id="exfilAllowlist" class="phrase-list"></ul>
+      <div class="add-row">
+        <input
+          type="text"
+          id="newExfilHost"
+          placeholder="api.example.com"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="button" id="addExfilHost" class="btn">Add host</button>
+      </div>
+
+      <div class="actions" style="margin-top:16px">
+        <button type="button" id="exportFindings" class="btn btn-secondary">Export all findings as JSON</button>
+      </div>
     </main>
     <script src="options.js"></script>
   </body>

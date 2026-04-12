@@ -11,6 +11,8 @@
   var KEY_LAST_AT = "userDnrLastApplyAt";
   var KEY_CAPTURE_HOSTS = "captureRequestHostsEnabled";
   var KEY_BLOCKED_HOSTS = "blockedHosts";
+  var KEY_REDTEAM_ENABLED = "redteamEnabled";
+  var KEY_EXFIL_ALLOWLIST = "redteamExfilAllowlist";
   /** Chrome urlFilter practical upper bound; rules that exceed fail to apply. */
   var MAX_URL_FILTER_LEN = 4096;
 
@@ -157,6 +159,42 @@
     }
   }
 
+  function renderExfilAllowlist(hosts) {
+    var el = document.getElementById("exfilAllowlist");
+    if (!el) return;
+    el.innerHTML = "";
+    var list = Array.isArray(hosts) ? hosts : [];
+    if (list.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "empty-hint";
+      empty.textContent = "No allowlisted hosts. The page origin is always allowed.";
+      el.appendChild(empty);
+      return;
+    }
+    for (var i = 0; i < list.length; i++) {
+      (function (index) {
+        var li = document.createElement("li");
+        var code = document.createElement("code");
+        code.className = "blocked-host-name";
+        code.textContent = list[index];
+        var rm = document.createElement("button");
+        rm.type = "button";
+        rm.className = "btn btn-remove";
+        rm.textContent = "Remove";
+        rm.addEventListener("click", function () {
+          var next = list.slice();
+          next.splice(index, 1);
+          var patch = {};
+          patch[KEY_EXFIL_ALLOWLIST] = next;
+          chrome.storage.local.set(patch);
+        });
+        li.appendChild(code);
+        li.appendChild(rm);
+        el.appendChild(li);
+      })(i);
+    }
+  }
+
   function renderBlockedHosts(hosts) {
     if (!blockedHostsListEl) return;
     blockedHostsListEl.innerHTML = "";
@@ -198,7 +236,7 @@
 
   function load() {
     chrome.storage.local.get(
-      [KEY_USER_DNR, KEY_LAST_ERROR, KEY_LAST_AT, KEY_CAPTURE_HOSTS, KEY_BLOCKED_HOSTS],
+      [KEY_USER_DNR, KEY_LAST_ERROR, KEY_LAST_AT, KEY_CAPTURE_HOSTS, KEY_BLOCKED_HOSTS, KEY_REDTEAM_ENABLED, KEY_EXFIL_ALLOWLIST],
       function (localItems) {
         renderUserDnr((localItems && localItems[KEY_USER_DNR]) || []);
         renderApplyStatus(
@@ -210,6 +248,11 @@
         if (capEl) {
           capEl.checked = !!localItems[KEY_CAPTURE_HOSTS];
         }
+        var rtEl = document.getElementById("redteamEnabled");
+        if (rtEl) {
+          rtEl.checked = !!localItems[KEY_REDTEAM_ENABLED];
+        }
+        renderExfilAllowlist((localItems && localItems[KEY_EXFIL_ALLOWLIST]) || []);
       }
     );
   }
@@ -250,6 +293,11 @@
     var addDnrBtn = document.getElementById("addDnrFilter");
     var captureHostsEl = document.getElementById("captureRequestHostsEnabled");
     var clearBlockedBtn = document.getElementById("clearBlockedHosts");
+    var redteamEl = document.getElementById("redteamEnabled");
+    var exfilAllowlistEl = document.getElementById("exfilAllowlist");
+    var newExfilHostEl = document.getElementById("newExfilHost");
+    var addExfilHostBtn = document.getElementById("addExfilHost");
+    var exportFindingsBtn = document.getElementById("exportFindings");
 
     if (!dnrListEl) return;
 
@@ -286,6 +334,48 @@
       });
     }
 
+    if (redteamEl) {
+      redteamEl.addEventListener("change", function () {
+        var patch = {};
+        patch[KEY_REDTEAM_ENABLED] = !!redteamEl.checked;
+        chrome.storage.local.set(patch);
+      });
+    }
+
+    if (addExfilHostBtn && newExfilHostEl) {
+      function addExfilFromInput() {
+        var val = (newExfilHostEl.value || "").trim().toLowerCase();
+        if (!val) return;
+        chrome.storage.local.get([KEY_EXFIL_ALLOWLIST], function (items) {
+          var list = (items[KEY_EXFIL_ALLOWLIST] || []).slice();
+          if (list.indexOf(val) === -1) list.push(val);
+          newExfilHostEl.value = "";
+          var patch = {};
+          patch[KEY_EXFIL_ALLOWLIST] = list;
+          chrome.storage.local.set(patch);
+          renderExfilAllowlist(list);
+        });
+      }
+      addExfilHostBtn.addEventListener("click", addExfilFromInput);
+      newExfilHostEl.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); addExfilFromInput(); }
+      });
+    }
+
+    if (exportFindingsBtn) {
+      exportFindingsBtn.addEventListener("click", function () {
+        chrome.storage.local.get(null, function (all) {
+          var blob = new Blob([JSON.stringify(all, null, 2)], { type: "application/json" });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = "boxedin-findings-" + new Date().toISOString().slice(0, 10) + ".json";
+          a.click();
+          URL.revokeObjectURL(url);
+        });
+      });
+    }
+
     chrome.storage.onChanged.addListener(function (changes, areaName) {
       if (areaName !== "local") return;
       if (changes[KEY_USER_DNR]) {
@@ -304,6 +394,13 @@
         if (capEl) {
           capEl.checked = !!changes[KEY_CAPTURE_HOSTS].newValue;
         }
+      }
+      if (changes[KEY_REDTEAM_ENABLED]) {
+        var rtEl = document.getElementById("redteamEnabled");
+        if (rtEl) rtEl.checked = !!changes[KEY_REDTEAM_ENABLED].newValue;
+      }
+      if (changes[KEY_EXFIL_ALLOWLIST]) {
+        renderExfilAllowlist(changes[KEY_EXFIL_ALLOWLIST].newValue || []);
       }
     });
   }

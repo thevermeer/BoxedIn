@@ -33,6 +33,15 @@
   /** Dynamic MAIN-world page-guard (see manifest; not static content_scripts). */
   var PAGE_GUARD_SCRIPT_ID = "boxedin-page-guard";
 
+  var STORAGE_REDTEAM_ENABLED = "redteamEnabled";
+  var STORAGE_EXFIL_ALLOWLIST = "redteamExfilAllowlist";
+  var redteamEnabled = false;
+  var headerFindingsByTab = new Map();
+  var exfilEventsByTab = new Map();
+  var injectFindingsByTab = new Map();
+  var MAX_EXFIL_EVENTS_PER_TAB = 200;
+  var MAX_HEADER_FINDINGS_PER_TAB = 100;
+
   /** tabId -> Set of hostname strings (cleared when service worker restarts). */
   var observedHostsByTab = new Map();
   var MAX_UNIQUE_HOSTS_PER_TAB = 500;
@@ -378,11 +387,13 @@
         var d = {};
         d[STORAGE_CAPTURE_HOSTS] = false;
         d[STORAGE_EXTENSION_ENABLED] = true;
+        d[STORAGE_REDTEAM_ENABLED] = false;
         return d;
       })(),
       function (items) {
         captureHostsEnabled = !!items[STORAGE_CAPTURE_HOSTS];
         extensionEnabled = items[STORAGE_EXTENSION_ENABLED] !== false;
+        redteamEnabled = !!items[STORAGE_REDTEAM_ENABLED];
         chrome.contextMenus.removeAll(function () {
           chrome.contextMenus.create(
             {
@@ -854,6 +865,109 @@
       sendResponse({ ok: true });
       return true;
     }
+    if (msg && msg.type === "BOXEDIN_GET_AUTH_AUDIT") {
+      var authTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      var authUrl = sender && sender.tab ? sender.tab.url : "";
+      var hf = headerFindingsByTab.get(authTid) || { reqHeaders: [], respHeaders: [], securityHeaders: {}, setCookieIssues: [] };
+      if (chrome.cookies && chrome.cookies.getAll && authUrl) {
+        chrome.cookies.getAll({ url: authUrl }, function (cookies) {
+          var cookieAudit = [];
+          for (var ci = 0; ci < cookies.length; ci++) {
+            var ck = cookies[ci];
+            var isSession = /session|token|auth|sid|jwt/i.test(ck.name);
+            var issues = [];
+            if (isSession && !ck.httpOnly) issues.push("missing HttpOnly");
+            if (!ck.secure) issues.push("missing Secure");
+            if (ck.sameSite === "no_restriction" && !ck.secure) issues.push("SameSite=None without Secure");
+            if (isSession && ck.expirationDate) {
+              var daysToExpiry = (ck.expirationDate - Date.now() / 1000) / 86400;
+              if (daysToExpiry > 30) issues.push("excessive expiry (" + Math.round(daysToExpiry) + " days)");
+            }
+            cookieAudit.push({
+              name: ck.name,
+              domain: ck.domain,
+              httpOnly: ck.httpOnly,
+              secure: ck.secure,
+              sameSite: ck.sameSite,
+              session: !ck.expirationDate,
+              isSessionLike: isSession,
+              issues: issues
+            });
+          }
+          sendResponse({
+            cookies: cookieAudit,
+            setCookieIssues: hf.setCookieIssues || [],
+            securityHeaders: hf.securityHeaders,
+            reqHeaders: hf.reqHeaders
+          });
+        });
+      } else {
+        sendResponse({
+          cookies: [],
+          setCookieIssues: hf.setCookieIssues || [],
+          securityHeaders: hf.securityHeaders,
+          reqHeaders: hf.reqHeaders
+        });
+      }
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_GET_EXFIL_EVENTS") {
+      var exfilTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      var events = exfilEventsByTab.get(exfilTid) || [];
+      sendResponse({ events: events });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_STORE_EXFIL_EVENT") {
+      var eTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      if (eTid >= 0 && msg.event) {
+        var evts = exfilEventsByTab.get(eTid);
+        if (!evts) {
+          evts = [];
+          exfilEventsByTab.set(eTid, evts);
+        }
+        if (evts.length < MAX_EXFIL_EVENTS_PER_TAB) {
+          evts.push(msg.event);
+        }
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_GET_INJECT_FINDINGS") {
+      var injTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      var injF = injectFindingsByTab.get(injTid) || { csp: null, cors: [], reflectedParams: [] };
+      sendResponse(injF);
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_STORE_INJECT_FINDING") {
+      var iFTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      if (iFTid >= 0 && msg.finding) {
+        var iFindings = injectFindingsByTab.get(iFTid);
+        if (!iFindings) {
+          iFindings = { csp: null, cors: [], reflectedParams: [], xss: [], csrf: [] };
+          injectFindingsByTab.set(iFTid, iFindings);
+        }
+        var ft = msg.finding.type;
+        if (ft === "xss" && iFindings.xss && iFindings.xss.length < 50) {
+          iFindings.xss.push(msg.finding);
+        } else if (ft === "csrf" && iFindings.csrf && iFindings.csrf.length < 50) {
+          iFindings.csrf.push(msg.finding);
+        } else if (ft === "reflected" && iFindings.reflectedParams && iFindings.reflectedParams.length < 50) {
+          iFindings.reflectedParams.push(msg.finding);
+        }
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_REDTEAM_RESET") {
+      var rTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      if (rTid >= 0) {
+        headerFindingsByTab.delete(rTid);
+        exfilEventsByTab.delete(rTid);
+        injectFindingsByTab.delete(rTid);
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
     return false;
   });
 
@@ -872,6 +986,9 @@
     if (changes[STORAGE_CAPTURE_HOSTS]) {
       captureHostsEnabled = !!changes[STORAGE_CAPTURE_HOSTS].newValue;
     }
+    if (changes[STORAGE_REDTEAM_ENABLED]) {
+      redteamEnabled = !!changes[STORAGE_REDTEAM_ENABLED].newValue;
+    }
   });
 
   if (chrome.action && chrome.action.onClicked) {
@@ -886,34 +1003,239 @@
     try {
       chrome.webRequest.onBeforeRequest.addListener(
         function (details) {
-          if (!extensionEnabled || !captureHostsEnabled) return;
+          if (!extensionEnabled) return;
+          if (!captureHostsEnabled && !redteamEnabled) return;
           if (details.tabId < 0) return;
           try {
             var u = new URL(details.url);
             var host = u.hostname;
             if (!host) return;
-            var set = observedHostsByTab.get(details.tabId);
-            if (!set) {
-              set = new Set();
-              observedHostsByTab.set(details.tabId, set);
+
+            if (captureHostsEnabled) {
+              var set = observedHostsByTab.get(details.tabId);
+              if (!set) {
+                set = new Set();
+                observedHostsByTab.set(details.tabId, set);
+              }
+              if (set.size < MAX_UNIQUE_HOSTS_PER_TAB) {
+                set.add(host);
+              }
             }
-            if (set.size >= MAX_UNIQUE_HOSTS_PER_TAB) return;
-            set.add(host);
+
+            if (redteamEnabled && details.requestBody) {
+              var bodySize = 0;
+              if (details.requestBody.raw) {
+                for (var ri = 0; ri < details.requestBody.raw.length; ri++) {
+                  var bytes = details.requestBody.raw[ri].bytes;
+                  if (bytes) bodySize += bytes.byteLength;
+                }
+              }
+              if (details.requestBody.formData) {
+                var fd = details.requestBody.formData;
+                var fdKeys = Object.keys(fd);
+                for (var fi = 0; fi < fdKeys.length; fi++) {
+                  var vals = fd[fdKeys[fi]];
+                  if (Array.isArray(vals)) {
+                    for (var vi = 0; vi < vals.length; vi++) {
+                      bodySize += String(vals[vi]).length;
+                    }
+                  }
+                }
+              }
+              if (bodySize > 5000) {
+                var evts = exfilEventsByTab.get(details.tabId);
+                if (!evts) {
+                  evts = [];
+                  exfilEventsByTab.set(details.tabId, evts);
+                }
+                if (evts.length < MAX_EXFIL_EVENTS_PER_TAB) {
+                  evts.push({
+                    source: "background",
+                    type: "exfil",
+                    subtype: "large-request",
+                    url: details.url.slice(0, 200),
+                    host: host,
+                    bodySize: bodySize,
+                    method: details.method || "?",
+                    ts: Date.now()
+                  });
+                }
+              }
+            }
           } catch (eUrl) {
             /* ignore */
           }
         },
         { urls: ["*://*/*"] },
-        []
+        ["requestBody"]
       );
     } catch (eWr) {
       console.warn("[BoxedIn] webRequest listener:", eWr);
     }
   }
 
+  if (chrome.webRequest && chrome.webRequest.onBeforeSendHeaders) {
+    try {
+      chrome.webRequest.onBeforeSendHeaders.addListener(
+        function (details) {
+          if (!extensionEnabled || !redteamEnabled) return;
+          if (details.tabId < 0) return;
+          var findings = headerFindingsByTab.get(details.tabId);
+          if (!findings) {
+            findings = { reqHeaders: [], respHeaders: [], securityHeaders: {} };
+            headerFindingsByTab.set(details.tabId, findings);
+          }
+          if (findings.reqHeaders.length >= MAX_HEADER_FINDINGS_PER_TAB) return;
+          var entry = { url: details.url, ts: Date.now(), headers: {} };
+          var dominated = false;
+          if (details.requestHeaders) {
+            for (var i = 0; i < details.requestHeaders.length; i++) {
+              var h = details.requestHeaders[i];
+              var name = h.name.toLowerCase();
+              if (name === "cookie" || name === "authorization" || name === "x-csrf-token") {
+                entry.headers[name] = h.value || "";
+              }
+            }
+            if (Object.keys(entry.headers).length > 0) {
+              try {
+                var u = new URL(details.url);
+                if (u.protocol === "http:" && entry.headers["authorization"]) {
+                  entry.authOverHttp = true;
+                }
+                if (entry.headers["authorization"]) {
+                  var av = entry.headers["authorization"];
+                  if (/^Bearer\s+eyJ/i.test(av)) entry.tokenType = "JWT";
+                  else if (/^Basic\s+/i.test(av)) entry.tokenType = "Basic";
+                  else if (/^Bearer\s+/i.test(av)) entry.tokenType = "Bearer";
+                  else entry.tokenType = "other";
+                }
+              } catch (eU) { /* ignore */ }
+              findings.reqHeaders.push(entry);
+            }
+          }
+        },
+        { urls: ["*://*/*"] },
+        ["requestHeaders", "extraHeaders"]
+      );
+    } catch (eBs) {
+      console.warn("[BoxedIn] onBeforeSendHeaders:", eBs);
+    }
+  }
+
+  if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
+    try {
+      chrome.webRequest.onHeadersReceived.addListener(
+        function (details) {
+          if (!extensionEnabled || !redteamEnabled) return;
+          if (details.tabId < 0) return;
+          if (details.type !== "main_frame") return;
+          var findings = headerFindingsByTab.get(details.tabId);
+          if (!findings) {
+            findings = { reqHeaders: [], respHeaders: [], securityHeaders: {} };
+            headerFindingsByTab.set(details.tabId, findings);
+          }
+          var inject = injectFindingsByTab.get(details.tabId);
+          if (!inject) {
+            inject = { csp: null, cors: [], reflectedParams: [] };
+            injectFindingsByTab.set(details.tabId, inject);
+          }
+          if (!details.responseHeaders) return;
+          var secH = {};
+          var setCookies = [];
+          var corsOrigin = null;
+          var corsCreds = false;
+          var cspRaw = null;
+          var cspReportOnly = null;
+          for (var i = 0; i < details.responseHeaders.length; i++) {
+            var h = details.responseHeaders[i];
+            var name = h.name.toLowerCase();
+            var val = h.value || "";
+            if (name === "strict-transport-security") secH.hsts = val;
+            else if (name === "x-content-type-options") secH.xcto = val;
+            else if (name === "x-frame-options") secH.xfo = val;
+            else if (name === "content-security-policy") cspRaw = val;
+            else if (name === "content-security-policy-report-only") cspReportOnly = val;
+            else if (name === "access-control-allow-origin") corsOrigin = val;
+            else if (name === "access-control-allow-credentials") corsCreds = val.toLowerCase() === "true";
+            else if (name === "set-cookie") setCookies.push(val);
+          }
+          findings.securityHeaders = {
+            hsts: secH.hsts || null,
+            xcto: secH.xcto || null,
+            xfo: secH.xfo || null,
+            hasCsp: !!cspRaw,
+            cspReportOnly: !!cspReportOnly && !cspRaw
+          };
+          findings.setCookieIssues = [];
+          for (var sc = 0; sc < setCookies.length; sc++) {
+            var cookie = setCookies[sc];
+            var parts = cookie.split(";");
+            var nameVal = (parts[0] || "").split("=");
+            var cName = (nameVal[0] || "").trim().toLowerCase();
+            var flags = cookie.toLowerCase();
+            var isSession = /session|token|auth|sid|jwt/.test(cName);
+            var issues = [];
+            if (isSession && flags.indexOf("httponly") === -1) issues.push("missing HttpOnly");
+            if (flags.indexOf("secure") === -1) issues.push("missing Secure");
+            if (flags.indexOf("samesite=none") !== -1 && flags.indexOf("secure") === -1) issues.push("SameSite=None without Secure");
+            if (issues.length > 0) {
+              findings.setCookieIssues.push({ name: cName, issues: issues });
+            }
+          }
+          if (cspRaw || cspReportOnly) {
+            var cspStr = cspRaw || cspReportOnly;
+            var directives = {};
+            var cspIssues = [];
+            var cspParts = cspStr.split(";");
+            for (var cp = 0; cp < cspParts.length; cp++) {
+              var trimmed = cspParts[cp].trim();
+              if (!trimmed) continue;
+              var spIdx = trimmed.indexOf(" ");
+              var dName = spIdx > 0 ? trimmed.substring(0, spIdx) : trimmed;
+              var dVal = spIdx > 0 ? trimmed.substring(spIdx + 1).trim() : "";
+              directives[dName.toLowerCase()] = dVal;
+            }
+            var scriptSrc = directives["script-src"] || directives["default-src"] || "";
+            if (/('unsafe-inline'|'unsafe-eval'|\*)/.test(scriptSrc)) {
+              if (scriptSrc.indexOf("'unsafe-inline'") !== -1) cspIssues.push("script-src allows unsafe-inline");
+              if (scriptSrc.indexOf("'unsafe-eval'") !== -1) cspIssues.push("script-src allows unsafe-eval");
+              if (/(?:^|\s)\*(?:\s|$)/.test(scriptSrc)) cspIssues.push("script-src allows wildcard (*)");
+            }
+            if (!directives["frame-ancestors"]) cspIssues.push("missing frame-ancestors (clickjacking risk)");
+            inject.csp = {
+              raw: cspStr.length > 500 ? cspStr.slice(0, 497) + "..." : cspStr,
+              reportOnly: !cspRaw && !!cspReportOnly,
+              directives: directives,
+              issues: cspIssues
+            };
+          } else {
+            inject.csp = { raw: null, missing: true, issues: ["No CSP header present"] };
+          }
+          if (corsOrigin) {
+            var corsIssues = [];
+            if (corsOrigin === "*") corsIssues.push("Access-Control-Allow-Origin: * (allows any origin)");
+            if (corsCreds && (corsOrigin === "*" || corsOrigin !== "null")) {
+              corsIssues.push("Access-Control-Allow-Credentials: true with permissive origin");
+            }
+            if (corsIssues.length > 0) {
+              inject.cors = corsIssues;
+            }
+          }
+        },
+        { urls: ["*://*/*"] },
+        ["responseHeaders", "extraHeaders"]
+      );
+    } catch (eHr) {
+      console.warn("[BoxedIn] onHeadersReceived:", eHr);
+    }
+  }
+
   if (chrome.tabs && chrome.tabs.onRemoved) {
     chrome.tabs.onRemoved.addListener(function (tabId) {
       observedHostsByTab.delete(tabId);
+      headerFindingsByTab.delete(tabId);
+      exfilEventsByTab.delete(tabId);
+      injectFindingsByTab.delete(tabId);
     });
   }
 

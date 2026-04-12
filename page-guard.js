@@ -546,6 +546,20 @@
         log("fetch blocked (protechts collector)", truncate(abs, 200));
         return Promise.resolve(blockedFetchResponse());
       }
+      var g2 = ensureGuard();
+      if (g2.redteamEnabled) {
+        try {
+          var obsUrl = abs || raw;
+          postRedteamToOverlay({
+            source: "boxedin-page-guard",
+            type: "exfil",
+            subtype: "fetch",
+            url: String(obsUrl).slice(0, 200),
+            method: fetchMethod,
+            ts: Date.now()
+          });
+        } catch (eObs) { /* ignore */ }
+      }
       return orig.apply(this, arguments);
     };
   }
@@ -595,6 +609,19 @@
           truncate(abs, 200)
         );
         throw new TypeError("Blocked protechts collector XHR");
+      }
+      var g2 = ensureGuard();
+      if (g2.redteamEnabled) {
+        try {
+          postRedteamToOverlay({
+            source: "boxedin-page-guard",
+            type: "exfil",
+            subtype: "xhr",
+            url: String(abs).slice(0, 200),
+            method: String(method),
+            ts: Date.now()
+          });
+        } catch (eObs) { /* ignore */ }
       }
       return origOpen.apply(this, arguments);
     };
@@ -859,9 +886,266 @@
       if (!seg) return;
       LINKEDIN_ALLOWED_OPAQUE_SEGMENTS.add(String(seg).toLowerCase());
     };
+    g.redteamEnabled = false;
+    g.enableRedteam = function () {
+      g.redteamEnabled = true;
+      runRedteamScans();
+    };
   } catch (_) {
     /* ignore */
   }
+
+  window.addEventListener("message", function (ev) {
+    try {
+      if (ev.data && ev.data.source === "boxedin-overlay" && ev.data.type === "enable-redteam") {
+        var g = ensureGuard();
+        if (!g.redteamEnabled) {
+          g.redteamEnabled = true;
+          runRedteamScans();
+        }
+      }
+    } catch (e) { /* ignore */ }
+  });
+
+  function postRedteamToOverlay(msg) {
+    try {
+      var target = window;
+      try { if (window.top) target = window.top; } catch (e) { /* cross-origin */ }
+      if (typeof target.postMessage === "function") {
+        target.postMessage(msg, "*");
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  var redteamScansActive = false;
+
+  function runRedteamScans() {
+    if (redteamScansActive) return;
+    var g = ensureGuard();
+    if (!g.redteamEnabled) return;
+    redteamScansActive = true;
+    scanStorage();
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () {
+        scanReflectedParams();
+        scanCsrfTokens();
+      });
+    } else {
+      scanReflectedParams();
+      scanCsrfTokens();
+    }
+    hookExfilApis();
+    observeXssSinks();
+  }
+
+  function scanStorage() {
+    try {
+      var findings = [];
+      var jwtRe = /^eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
+      var apiKeyRe = /^(sk-|pk-|AKIA|ghp_|gho_|github_pat_)[A-Za-z0-9_-]{10,}/;
+      var stores = [];
+      try { if (window.localStorage) stores.push({ name: "localStorage", s: window.localStorage }); } catch (e) {}
+      try { if (window.sessionStorage) stores.push({ name: "sessionStorage", s: window.sessionStorage }); } catch (e) {}
+      for (var si = 0; si < stores.length; si++) {
+        var store = stores[si];
+        try {
+          for (var ki = 0; ki < store.s.length; ki++) {
+            var key = store.s.key(ki);
+            var val = store.s.getItem(key) || "";
+            if (jwtRe.test(val)) {
+              findings.push({ store: store.name, key: key, issue: "JWT token in " + store.name, preview: val.slice(0, 40) + "..." });
+            } else if (apiKeyRe.test(val)) {
+              findings.push({ store: store.name, key: key, issue: "API key pattern in " + store.name, preview: val.slice(0, 20) + "..." });
+            }
+          }
+        } catch (eS) { /* ignore */ }
+      }
+      if (findings.length > 0) {
+        postRedteamToOverlay({
+          source: "boxedin-page-guard",
+          type: "auth",
+          subtype: "storage-sensitive",
+          findings: findings
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function scanReflectedParams() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var frag = window.location.hash.slice(1);
+      var body = document.body ? document.body.innerHTML : "";
+      if (!body) return;
+      var findings = [];
+      params.forEach(function (val, key) {
+        if (val.length >= 4 && body.indexOf(val) !== -1) {
+          findings.push({ param: key, value: val.slice(0, 60), context: "query" });
+        }
+      });
+      if (frag.length >= 4 && body.indexOf(frag) !== -1) {
+        findings.push({ param: "#fragment", value: frag.slice(0, 60), context: "fragment" });
+      }
+      if (findings.length > 0) {
+        postRedteamToOverlay({
+          source: "boxedin-page-guard",
+          type: "inject",
+          subtype: "reflected-param",
+          findings: findings
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function scanCsrfTokens() {
+    try {
+      var forms = document.querySelectorAll("form");
+      var findings = [];
+      var csrfNames = /csrf|_token|authenticity_token|__RequestVerificationToken|antiforgery/i;
+      for (var fi = 0; fi < forms.length; fi++) {
+        var form = forms[fi];
+        var method = (form.method || "GET").toUpperCase();
+        if (method === "GET") continue;
+        var hasToken = false;
+        var inputs = form.querySelectorAll("input[type=hidden]");
+        for (var ii = 0; ii < inputs.length; ii++) {
+          if (csrfNames.test(inputs[ii].name || "")) { hasToken = true; break; }
+        }
+        if (!hasToken) {
+          findings.push({
+            action: form.action || window.location.href,
+            method: method,
+            id: form.id || null
+          });
+        }
+      }
+      if (findings.length > 0) {
+        postRedteamToOverlay({
+          source: "boxedin-page-guard",
+          type: "inject",
+          subtype: "csrf-missing",
+          findings: findings
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function hookExfilApis() {
+    try {
+      if (navigator.clipboard) {
+        var origWrite = navigator.clipboard.writeText;
+        if (typeof origWrite === "function") {
+          navigator.clipboard.writeText = function (text) {
+            postRedteamToOverlay({
+              source: "boxedin-page-guard",
+              type: "exfil",
+              subtype: "clipboard-write",
+              size: text ? text.length : 0,
+              preview: text ? text.slice(0, 80) : "",
+              ts: Date.now()
+            });
+            return origWrite.apply(this, arguments);
+          };
+        }
+        var origRead = navigator.clipboard.readText;
+        if (typeof origRead === "function") {
+          navigator.clipboard.readText = function () {
+            postRedteamToOverlay({
+              source: "boxedin-page-guard",
+              type: "exfil",
+              subtype: "clipboard-read",
+              ts: Date.now()
+            });
+            return origRead.apply(this, arguments);
+          };
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    try {
+      var OrigWS = window.WebSocket;
+      if (typeof OrigWS === "function") {
+        window.WebSocket = function (url, protocols) {
+          postRedteamToOverlay({
+            source: "boxedin-page-guard",
+            type: "exfil",
+            subtype: "websocket",
+            url: String(url).slice(0, 200),
+            ts: Date.now()
+          });
+          if (protocols !== undefined) return new OrigWS(url, protocols);
+          return new OrigWS(url);
+        };
+        window.WebSocket.prototype = OrigWS.prototype;
+        window.WebSocket.CONNECTING = OrigWS.CONNECTING;
+        window.WebSocket.OPEN = OrigWS.OPEN;
+        window.WebSocket.CLOSING = OrigWS.CLOSING;
+        window.WebSocket.CLOSED = OrigWS.CLOSED;
+      }
+    } catch (e) { /* ignore */ }
+
+    try {
+      var origSubmit = HTMLFormElement.prototype.submit;
+      HTMLFormElement.prototype.submit = function () {
+        postRedteamToOverlay({
+          source: "boxedin-page-guard",
+          type: "exfil",
+          subtype: "form-submit",
+          action: (this.action || "").slice(0, 200),
+          method: this.method || "GET",
+          ts: Date.now()
+        });
+        return origSubmit.apply(this, arguments);
+      };
+    } catch (e) { /* ignore */ }
+  }
+
+  function observeXssSinks() {
+    try {
+      var origDocWrite = document.write;
+      document.write = function () {
+        var content = arguments.length > 0 ? String(arguments[0]) : "";
+        if (/<script|on\w+\s*=/i.test(content)) {
+          postRedteamToOverlay({
+            source: "boxedin-page-guard",
+            type: "inject",
+            subtype: "xss-sink",
+            sink: "document.write",
+            preview: content.slice(0, 120),
+            ts: Date.now()
+          });
+        }
+        return origDocWrite.apply(this, arguments);
+      };
+    } catch (e) { /* ignore */ }
+
+    try {
+      var origEval = window.eval;
+      window.eval = function (code) {
+        postRedteamToOverlay({
+          source: "boxedin-page-guard",
+          type: "inject",
+          subtype: "xss-sink",
+          sink: "eval",
+          preview: String(code || "").slice(0, 120),
+          ts: Date.now()
+        });
+        return origEval.apply(this, arguments);
+      };
+    } catch (e) { /* ignore */ }
+  }
+
+  window.addEventListener("message", function (ev) {
+    try {
+      var data = ev.data;
+      if (!data || data.source !== "boxedin-overlay") return;
+      if (data.type === "enable-redteam") {
+        var g2 = ensureGuard();
+        g2.redteamEnabled = true;
+        runRedteamScans();
+      }
+    } catch (e) { /* ignore */ }
+  });
 
   log(
     "active — " +

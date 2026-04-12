@@ -17,5 +17,12 @@ Per-hostname blocking (overlay checkboxes)
   These are applied via chrome.declarativeNetRequest.updateDynamicRules using
   requestDomains conditions. Users toggle them from the overlay checkbox list.
 
+Red-team toolkit (passive analysis — no DNR rules)
+  Files: background.js, page-guard.js, stats-overlay.js
+  No DNR rule IDs used. Uses in-memory per-tab maps (headerFindingsByTab,
+  exfilEventsByTab, injectFindingsByTab), gated by STORAGE_REDTEAM_ENABLED.
+  Features: Auth/cookie audit, exfil monitoring (clipboard, postMessage,
+  WebSocket, form), CSP/CORS analysis, XSS sink detection, CSRF scanning.
+
 Do not assign bundled rule ids in the 10000+ range or user rule ids in 1–9999.
 Host block rule ids must stay in the 20000–20499 range.

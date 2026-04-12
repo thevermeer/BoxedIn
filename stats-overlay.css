@@ -1,10 +1,10 @@
-/* Floating block stats overlay (all sites) */
+/* Floating block stats overlay (all sites) — tabbed red-team panels */
 #boxedin-block-stats-root {
   position: fixed;
   left: 12px;
   bottom: 12px;
   z-index: 2147483646;
-  max-width: min(320px, calc(100vw - 24px));
+  max-width: min(360px, calc(100vw - 24px));
   font-family: system-ui, -apple-system, Segoe UI, sans-serif;
   font-size: 11px;
   line-height: 1.35;
@@ -141,13 +141,59 @@
   flex-direction: column;
 }
 
-#boxedin-block-stats-root.boxedin-stats--collapsed .boxedin-stats__body {
+#boxedin-block-stats-root.boxedin-stats--collapsed .boxedin-stats__body,
+#boxedin-block-stats-root.boxedin-stats--collapsed .boxedin-stats__tabs {
   display: none;
 }
 
 #boxedin-block-stats-root.boxedin-stats--collapsed {
   max-width: min(280px, calc(100vw - 24px));
 }
+
+/* ── Tab strip ─────────────────────────────────────────────────────── */
+
+.boxedin-stats__tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 0 6px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.boxedin-stats--dark .boxedin-stats__tabs {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.boxedin-stats__tab {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 6px 10px 5px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.boxedin-stats__tab:hover {
+  opacity: 0.8;
+}
+
+.boxedin-stats__tab--active {
+  opacity: 1;
+  border-bottom-color: #0070d8;
+}
+
+.boxedin-stats--dark .boxedin-stats__tab--active {
+  border-bottom-color: #5ac8fa;
+}
+
+/* ── Existing Blocks panel ─────────────────────────────────────────── */
 
 .boxedin-stats__section {
   margin-top: 8px;
@@ -405,5 +451,251 @@
 
 .boxedin-stats__empty {
   opacity: 0.7;
+  font-style: italic;
+}
+
+/* ── Red-team panels shared ────────────────────────────────────────── */
+
+.boxedin-rt__group {
+  margin-top: 8px;
+}
+
+.boxedin-rt__group:first-child {
+  margin-top: 0;
+}
+
+.boxedin-rt__group-head {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.boxedin-rt__badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.boxedin-rt__badge--critical {
+  background: #c41e3a;
+  color: #fff;
+}
+
+.boxedin-rt__badge--warning {
+  background: #e67e22;
+  color: #fff;
+}
+
+.boxedin-rt__badge--info {
+  background: #3498db;
+  color: #fff;
+}
+
+.boxedin-rt__item {
+  padding: 3px 0;
+  font-size: 10px;
+  line-height: 1.35;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.boxedin-stats--dark .boxedin-rt__item {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.boxedin-rt__item:last-child {
+  border-bottom: none;
+}
+
+.boxedin-rt__item-label {
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.boxedin-rt__item-detail {
+  opacity: 0.65;
+  word-break: break-all;
+  font-size: 9px;
+}
+
+.boxedin-rt__none {
+  font-size: 10px;
+  opacity: 0.55;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* ── Exfil event stream ────────────────────────────────────────────── */
+
+.boxedin-rt__stream {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+#boxedin-block-stats-root.boxedin-stats--maximized .boxedin-rt__stream {
+  max-height: none;
+}
+
+.boxedin-rt__event {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 5px;
+  padding: 3px 2px;
+  font-size: 10px;
+  line-height: 1.3;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  align-items: baseline;
+}
+
+.boxedin-stats--dark .boxedin-rt__event {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.boxedin-rt__event-type {
+  font-weight: 700;
+  font-size: 9px;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.06);
+  white-space: nowrap;
+}
+
+.boxedin-stats--dark .boxedin-rt__event-type {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.boxedin-rt__event--alert .boxedin-rt__event-type {
+  background: #c41e3a;
+  color: #fff;
+}
+
+.boxedin-rt__event-url {
+  word-break: break-all;
+  opacity: 0.8;
+}
+
+.boxedin-rt__event-ts {
+  font-size: 9px;
+  opacity: 0.45;
+  white-space: nowrap;
+}
+
+.boxedin-rt__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.boxedin-rt__filter {
+  font: inherit;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.boxedin-rt__filter--active {
+  opacity: 1;
+  background: rgba(0, 112, 216, 0.1);
+  border-color: #0070d8;
+}
+
+.boxedin-stats--dark .boxedin-rt__filter {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.boxedin-stats--dark .boxedin-rt__filter--active {
+  background: rgba(90, 200, 250, 0.15);
+  border-color: #5ac8fa;
+}
+
+/* ── Inject panel ──────────────────────────────────────────────────── */
+
+.boxedin-rt__directive-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9px;
+  margin-top: 4px;
+}
+
+.boxedin-rt__directive-table th,
+.boxedin-rt__directive-table td {
+  text-align: left;
+  padding: 2px 4px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  vertical-align: top;
+}
+
+.boxedin-stats--dark .boxedin-rt__directive-table th,
+.boxedin-stats--dark .boxedin-rt__directive-table td {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.boxedin-rt__directive-table th {
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.boxedin-rt__directive-table td {
+  word-break: break-all;
+}
+
+/* ── Exfil allow button ────────────────────────────────────────────── */
+
+.boxedin-rt__allow-btn {
+  font: inherit;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  margin-left: 4px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+  vertical-align: middle;
+}
+
+.boxedin-rt__allow-btn:hover {
+  opacity: 1;
+  background: rgba(0, 112, 216, 0.1);
+  border-color: #0070d8;
+}
+
+.boxedin-stats--dark .boxedin-rt__allow-btn:hover {
+  background: rgba(90, 200, 250, 0.15);
+  border-color: #5ac8fa;
+}
+
+/* ── Red-team disabled state ───────────────────────────────────────── */
+
+.boxedin-rt__disabled {
+  text-align: center;
+  padding: 16px 8px;
+  opacity: 0.6;
+  font-size: 10px;
   font-style: italic;
 }
