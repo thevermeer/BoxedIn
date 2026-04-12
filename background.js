@@ -43,6 +43,8 @@
   var injectFindingsByTab = new Map();
   var techFindingsByTab = new Map();
   var MAX_TECH_FINDINGS_PER_TAB = 100;
+  var apiFindingsByTab = new Map();
+  var MAX_API_FINDINGS_PER_TAB = 200;
   var MAX_EXFIL_EVENTS_PER_TAB = 200;
   var MAX_HEADER_FINDINGS_PER_TAB = 100;
 
@@ -1063,6 +1065,44 @@
       sendResponse({ findings: techFindingsByTab.get(gtTid) || [] });
       return true;
     }
+    if (msg && msg.type === "BOXEDIN_STORE_API_FINDING") {
+      var afTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      if (afTid >= 0 && msg.finding) {
+        var aFindings = apiFindingsByTab.get(afTid);
+        if (!aFindings) {
+          aFindings = [];
+          apiFindingsByTab.set(afTid, aFindings);
+        }
+        var dupApi = false;
+        for (var adi = 0; adi < aFindings.length; adi++) {
+          if (aFindings[adi].url === msg.finding.url) { dupApi = true; break; }
+        }
+        if (!dupApi && aFindings.length < MAX_API_FINDINGS_PER_TAB) {
+          aFindings.push(msg.finding);
+        }
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_GET_API_FINDINGS") {
+      var gaTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      var staticApis = apiFindingsByTab.get(gaTid) || [];
+      var exfilApis = [];
+      var exfilEvts = exfilEventsByTab.get(gaTid) || [];
+      var seenExfil = {};
+      var apiLikeRe = /\/api\/|\/v[0-9]+\/|\/graphql|\/rest\/|\/webhook/i;
+      for (var eai = 0; eai < exfilEvts.length; eai++) {
+        var ev = exfilEvts[eai];
+        if (ev.url && (ev.subtype === "fetch" || ev.subtype === "xhr") && apiLikeRe.test(ev.url)) {
+          if (!seenExfil[ev.url]) {
+            seenExfil[ev.url] = true;
+            exfilApis.push({ method: ev.method || "GET", url: ev.url, ts: ev.ts });
+          }
+        }
+      }
+      sendResponse({ findings: staticApis, exfilApis: exfilApis });
+      return true;
+    }
     if (msg && msg.type === "BOXEDIN_RESET_EXFIL_EVENTS") {
       var exRTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
       if (exRTid >= 0) {
@@ -1078,6 +1118,7 @@
         exfilEventsByTab.delete(rTid);
         injectFindingsByTab.delete(rTid);
         techFindingsByTab.delete(rTid);
+        apiFindingsByTab.delete(rTid);
         capturedRequestsByTab.delete(rTid);
       }
       sendResponse({ ok: true });
@@ -1577,6 +1618,7 @@
       exfilEventsByTab.delete(tabId);
       injectFindingsByTab.delete(tabId);
       techFindingsByTab.delete(tabId);
+      apiFindingsByTab.delete(tabId);
       capturedRequestsByTab.delete(tabId);
     });
   }

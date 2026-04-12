@@ -40,6 +40,7 @@ LMK if this works, if you have additional URLs to add, or suggestions on improvi
   - [Exfil Tab](#exfil-tab)
   - [Inject Tab](#inject-tab)
   - [Recon Tab](#recon-tab)
+  - [APIs Tab](#apis-tab)
   - [OSINT Tab](#osint-tab)
   - [Request Repeater](#request-repeater)
 - [Options Page](#options-page)
@@ -232,6 +233,26 @@ Performs passive tech-stack fingerprinting to identify the site's CMS, JavaScrip
 
 Each finding includes an **attack-surface note** summarizing relevant risks. For example: WordPress findings note XML-RPC and plugin/theme CVE exposure; jQuery findings flag DOM XSS via `$.html()` and version-specific CVEs; AngularJS findings highlight EOL status and known sandbox escapes; HTMX findings warn about hx-* attribute injection; Bootstrap findings reference XSS in tooltip/popover for older versions; cookie findings identify the server-side stack even when response headers are stripped; analytics findings warn about PII leakage through query strings and custom dimensions; server header findings flag version disclosure and known CVE risk.
 
+### APIs Tab
+
+Enumerates API endpoints discovered in the page through five complementary detection layers. Findings are split into two groups — **Found in Code** (static analysis) and **Observed at Runtime** (from captured fetch/XHR traffic).
+
+**Detection layers:**
+
+- **Layer 1 — Inline script regex** (page-guard) — walks inline `<script>` elements and matches URL-like strings from common API call patterns: `fetch("...")`, `axios.get/post/put/delete/patch("...")`, `$.ajax({url: "..."})`, `$.get("...")`, `$.post("...")`, `XMLHttpRequest .open("METHOD", "...")`, and string literals matching REST path patterns (`/api/`, `/v[0-9]/`, `/graphql`, `/rest/`, `/webhook`).
+- **Layer 2 — Window config probing** (page-guard) — enumerates well-known global config shapes (`window.__CONFIG__`, `window.__APP_CONFIG__`, `window.__SETTINGS__`, `window.ENV`, `window.__ENV__`, `window.config`, `window.appConfig`, `window.settings`) and framework-specific objects (`window.__NEXT_DATA__.props`, `window.__NUXT__`, `window.__remixContext`). Deep-scans one level of each object for string values matching `https?://` or API path patterns.
+- **Layer 3 — DOM attribute scan** (page-guard) — scans `<form action="...">`, `<a href="...">`, and data attributes (`data-api-url`, `data-api-endpoint`, `data-url`, `data-endpoint`) for API-like URL patterns.
+- **Layer 4 — Runtime fetch/XHR capture** (background) — filters the existing exfil event stream for unique fetch/XHR URLs matching API path patterns (`/api/`, `/v[0-9]/`, `/graphql`, `/rest/`, `/webhook`). These appear in the "Observed at Runtime" section.
+- **Layer 5 — Script src path patterns** (page-guard) — scans external `<script src="...">` URLs for API-suggestive paths.
+
+**Display:**
+
+- Each endpoint row shows a color-coded HTTP method badge (GET green, POST blue, PUT orange, DELETE red, PATCH orange, other gray), the URL, and the evidence/context snippet.
+- Static findings are grouped by origin (Inline Scripts, Window Config Objects, DOM Attributes, Script Sources).
+- Runtime findings are listed separately with their observed method.
+
+**Data flow:** page-guard emits findings via `postMessage` with `type: "api"`. The overlay forwards them to the background via `BOXEDIN_STORE_API_FINDING` (deduplicated by URL, capped at 200 per tab). The APIs panel fetches both static findings and runtime API URLs via `BOXEDIN_GET_API_FINDINGS`.
+
 ### OSINT Tab
 
 Integrates with two public OSINT search engines — **crt.sh** and **Shodan** — to perform external reconnaissance on domains and hosts. Searches open in a new browser tab; no API keys or accounts are required.
@@ -277,7 +298,7 @@ Open from the extension's context menu or `chrome://extensions` > BoxedIn > Deta
 - **Bundled rules** — a reference table of the 8 static DNR rules with IDs, patterns, purpose, and removal risk.
 - **Blocked hostnames** — lists every host blocked from the overlay, with per-host remove buttons and a "Clear all" action.
 - **Custom network block rules** — add, edit, or remove up to 50 `urlFilter` patterns. Patterns are validated on input and apply status is reported after the service worker processes them.
-- **Red-team tools** — a toggle to enable the Auth, Exfil, Inject, and Recon tabs in the overlay. Off by default.
+- **Red-team tools** — a toggle to enable the Auth, Exfil, Inject, Recon, APIs, and OSINT tabs in the overlay. Off by default.
 - **Exfiltration allowlist** — manage trusted hostnames that won't trigger third-party exfil alerts. The page's own origin is always allowed.
 - **Blocked cookies** — a persistent list of cookies that are automatically deleted whenever the browser tries to set them. Cookies blocked from the Auth tab in the overlay are added here automatically. Entries can also be added manually by specifying a cookie name and domain, or removed individually or cleared entirely. The service worker enforces the blocklist in real time via `chrome.cookies.onChanged`.
 - **Export findings** — downloads all stored data (settings, stats, findings) as a timestamped JSON file (`boxedin-findings-YYYY-MM-DD.json`).
@@ -289,7 +310,7 @@ Open from the extension's context menu or `chrome://extensions` > BoxedIn > Deta
 - `**manifest.json`** — Manifest V3 declaration: permissions, background service worker, content scripts, and DNR rulesets.
 - `**background.js**` — Service worker handling DNR rule management, `webRequest` listeners, per-tab in-memory data maps, header-based analysis, and request replay.
 - `**page-guard.js**` — MAIN-world content script injected at `document_start` in all frames. Patches browser APIs to block telemetry and collector URLs, and runs red-team DOM scans when enabled.
-- `**stats-overlay.js**` — Isolated-world content script injected at `document_idle` in the top frame. Renders the floating overlay with tabbed panels (Blocks, Auth, Exfil, Inject, Recon) and the Request Repeater.
+- `**stats-overlay.js**` — Isolated-world content script injected at `document_idle` in the top frame. Renders the floating overlay with tabbed panels (Blocks, Auth, Exfil, Inject, Recon, APIs, OSINT) and the Request Repeater.
 - `**stats-overlay.css**` — Styles for the overlay and repeater, with light/dark mode support and responsive layout.
 - `**rules.json**` — The 8 bundled static DNR block rules.
 - `**rules-ids.txt**` — Documents DNR rule ID ranges to prevent overlaps when editing.

@@ -676,6 +676,136 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* ── APIs panel ────────────────────────────────────────────────────── */
+
+.boxedin-rt__method-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background: rgba(0, 0, 0, 0.08);
+  color: #555;
+  flex-shrink: 0;
+}
+
+.boxedin-stats--dark .boxedin-rt__method-badge {
+  background: rgba(255, 255, 255, 0.12);
+  color: #aaa;
+}
+
+.boxedin-rt__method--get {
+  background: rgba(39, 174, 96, 0.15);
+  color: #1b8a4a;
+}
+
+.boxedin-stats--dark .boxedin-rt__method--get {
+  background: rgba(39, 174, 96, 0.25);
+  color: #5dde72;
+}
+
+.boxedin-rt__method--post {
+  background: rgba(52, 152, 219, 0.15);
+  color: #2374ab;
+}
+
+.boxedin-stats--dark .boxedin-rt__method--post {
+  background: rgba(52, 152, 219, 0.25);
+  color: #5ac8fa;
+}
+
+.boxedin-rt__method--put {
+  background: rgba(230, 126, 34, 0.15);
+  color: #b35e1a;
+}
+
+.boxedin-stats--dark .boxedin-rt__method--put {
+  background: rgba(230, 126, 34, 0.25);
+  color: #f0a050;
+}
+
+.boxedin-rt__method--patch {
+  background: rgba(230, 126, 34, 0.12);
+  color: #b35e1a;
+}
+
+.boxedin-stats--dark .boxedin-rt__method--patch {
+  background: rgba(230, 126, 34, 0.2);
+  color: #f0a050;
+}
+
+.boxedin-rt__method--delete {
+  background: rgba(196, 30, 58, 0.15);
+  color: #a01830;
+}
+
+.boxedin-stats--dark .boxedin-rt__method--delete {
+  background: rgba(196, 30, 58, 0.25);
+  color: #ff6b6b;
+}
+
+.boxedin-rt__api-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 0;
+  font-size: 10px;
+  line-height: 1.35;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.boxedin-stats--dark .boxedin-rt__api-row {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.boxedin-rt__api-row:last-child {
+  border-bottom: none;
+}
+
+.boxedin-rt__api-url {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 9px;
+  word-break: break-all;
+  opacity: 0.85;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.boxedin-rt__api-context {
+  font-size: 8px;
+  opacity: 0.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  flex-shrink: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.boxedin-rt__api-origin-head {
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.65;
+  margin-top: 6px;
+  margin-bottom: 2px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.boxedin-stats--dark .boxedin-rt__api-origin-head {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.boxedin-rt__api-origin-count {
+  font-weight: 400;
+  opacity: 0.6;
+}
+
 /* ── Exfil event stream ────────────────────────────────────────────── */
 
 .boxedin-rt__stream {

@@ -106,6 +106,16 @@
       return;
     }
 
+    if (data.type === "api") {
+      try {
+        chrome.runtime.sendMessage({
+          type: "BOXEDIN_STORE_API_FINDING", finding: data
+        }, function () { if (chrome.runtime.lastError) {} });
+      } catch (e) { /* ignore */ }
+      if (activeTab === "apis") renderActivePanel();
+      return;
+    }
+
     if (data.type === "tech") {
       try {
         chrome.runtime.sendMessage({
@@ -260,6 +270,7 @@
     else if (activeTab === "exfil") fetchExfilAndRender();
     else if (activeTab === "inject") fetchInjectAndRender();
     else if (activeTab === "recon") fetchReconAndRender();
+    else if (activeTab === "apis") fetchApisAndRender();
     else if (activeTab === "osint") renderOsintPanel();
   }
 
@@ -366,6 +377,7 @@
         { id: "exfil", label: "Exfil" },
         { id: "inject", label: "Inject" },
         { id: "recon", label: "Recon" },
+        { id: "apis", label: "APIs" },
         { id: "osint", label: "OSINT" }
       ];
       tabsHtml = '<div class="boxedin-stats__tabs">';
@@ -1245,6 +1257,120 @@
     }
   }
 
+  /* ── APIs panel ──────────────────────────────────────────────────── */
+
+  function buildApisBody(staticFindings, runtimeFindings) {
+    if (!redteamEnabled) {
+      return '<p class="boxedin-rt__disabled">Enable red-team tools in the BoxedIn options page.</p>';
+    }
+
+    staticFindings = staticFindings || [];
+    runtimeFindings = runtimeFindings || [];
+
+    if (staticFindings.length === 0 && runtimeFindings.length === 0) {
+      return '<p class="boxedin-rt__none">No API endpoints discovered yet. Navigate to a site and reload to scan.</p>';
+    }
+
+    var parts = [];
+
+    function methodBadge(m) {
+      var cls = "boxedin-rt__method-badge";
+      var ml = (m || "?").toUpperCase();
+      if (ml === "GET") cls += " boxedin-rt__method--get";
+      else if (ml === "POST") cls += " boxedin-rt__method--post";
+      else if (ml === "PUT") cls += " boxedin-rt__method--put";
+      else if (ml === "DELETE") cls += " boxedin-rt__method--delete";
+      else if (ml === "PATCH") cls += " boxedin-rt__method--patch";
+      return '<span class="' + cls + '">' + escapeHtml(ml) + '</span>';
+    }
+
+    if (staticFindings.length > 0) {
+      var originGroups = { inline: [], config: [], dom: [], "script-src": [] };
+      for (var si = 0; si < staticFindings.length; si++) {
+        var f = staticFindings[si];
+        var origin = f.origin || "inline";
+        if (!originGroups[origin]) originGroups[origin] = [];
+        originGroups[origin].push(f);
+      }
+
+      var originMeta = [
+        { key: "inline", label: "Inline Scripts" },
+        { key: "config", label: "Window Config Objects" },
+        { key: "dom", label: "DOM Attributes" },
+        { key: "script-src", label: "Script Sources" }
+      ];
+
+      parts.push(
+        '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">' +
+        'Found in Code' +
+        '<span class="boxedin-rt__recon-count">' + staticFindings.length + '</span>' +
+        '</div>');
+
+      for (var og = 0; og < originMeta.length; og++) {
+        var items = originGroups[originMeta[og].key];
+        if (!items || items.length === 0) continue;
+
+        parts.push(
+          '<div class="boxedin-rt__api-origin-head">' +
+          escapeHtml(originMeta[og].label) +
+          ' <span class="boxedin-rt__api-origin-count">(' + items.length + ')</span></div>');
+
+        for (var j = 0; j < items.length; j++) {
+          var item = items[j];
+          parts.push(
+            '<div class="boxedin-rt__api-row">' +
+            methodBadge(item.method) +
+            '<span class="boxedin-rt__api-url" title="' + escapeAttr(item.url || "") + '">' +
+            escapeHtml(item.url || "") + '</span>');
+          if (item.context) {
+            parts.push(
+              '<span class="boxedin-rt__api-context" title="' + escapeAttr(item.context) + '">' +
+              escapeHtml(item.context) + '</span>');
+          }
+          parts.push('</div>');
+        }
+      }
+      parts.push('</div>');
+    }
+
+    if (runtimeFindings.length > 0) {
+      parts.push(
+        '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">' +
+        'Observed at Runtime' +
+        '<span class="boxedin-rt__recon-count">' + runtimeFindings.length + '</span>' +
+        '</div>');
+
+      for (var ri = 0; ri < runtimeFindings.length; ri++) {
+        var rf = runtimeFindings[ri];
+        parts.push(
+          '<div class="boxedin-rt__api-row">' +
+          methodBadge(rf.method) +
+          '<span class="boxedin-rt__api-url" title="' + escapeAttr(rf.url || "") + '">' +
+          escapeHtml(rf.url || "") + '</span>' +
+          '</div>');
+      }
+      parts.push('</div>');
+    }
+
+    return parts.join("");
+  }
+
+  function fetchApisAndRender() {
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_GET_API_FINDINGS" }, function (response) {
+        if (chrome.runtime.lastError) {
+          if (activeTab === "apis") renderShell(buildApisBody([], []));
+          return;
+        }
+        var staticFindings = (response && response.findings) || [];
+        var runtimeFindings = (response && response.exfilApis) || [];
+        if (activeTab === "apis") renderShell(buildApisBody(staticFindings, runtimeFindings));
+      });
+    } catch (e) {
+      if (activeTab === "apis") renderShell(buildApisBody([], []));
+    }
+  }
+
   /* ── OSINT panel ─────────────────────────────────────────────────── */
 
   /** Build and render the OSINT panel with crt.sh search for the current domain. */
@@ -1666,7 +1792,7 @@
 
       if (redteamEnabled) {
         var savedTab = items[STORAGE_ACTIVE_TAB];
-        if (savedTab === "auth" || savedTab === "exfil" || savedTab === "inject" || savedTab === "recon" || savedTab === "osint") {
+        if (savedTab === "auth" || savedTab === "exfil" || savedTab === "inject" || savedTab === "recon" || savedTab === "apis" || savedTab === "osint") {
           activeTab = savedTab;
         }
         enablePageGuardRedteam();

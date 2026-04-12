@@ -1326,6 +1326,163 @@
     } catch (e) { /* ignore */ }
   }
 
+  function scanApiEndpoints() {
+    try {
+      var found = {};
+      var API_PATH_RE = /\/api\/|\/v[0-9]+\/|\/graphql|\/rest\/|\/webhook/i;
+
+      function emit(method, url, origin, context) {
+        var key = (method || "?") + " " + url;
+        if (found[key]) return;
+        found[key] = true;
+        postRedteamToOverlay({
+          source: "boxedin-page-guard",
+          type: "api",
+          method: method || "unknown",
+          url: url,
+          origin: origin,
+          context: context || ""
+        });
+      }
+
+      /* Layer 1 — Inline script body regex */
+
+      var scripts = document.scripts || [];
+      var fetchRe = /fetch\s*\(\s*["'`]([^"'`\s]{4,200})["'`]/g;
+      var axiosRe = /axios\s*\.\s*(get|post|put|delete|patch)\s*\(\s*["'`]([^"'`\s]{4,200})["'`]/gi;
+      var ajaxUrlRe = /\$\s*\.\s*ajax\s*\(\s*\{[^}]*url\s*:\s*["'`]([^"'`\s]{4,200})["'`]/g;
+      var jqShortRe = /\$\s*\.\s*(get|post)\s*\(\s*["'`]([^"'`\s]{4,200})["'`]/gi;
+      var xhrOpenRe = /\.open\s*\(\s*["'`](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)["'`]\s*,\s*["'`]([^"'`\s]{4,200})["'`]/gi;
+      var restLiteralRe = /["'`]((?:https?:\/\/[^\s"'`]{4,180})?\/(?:api|v[0-9]+|graphql|rest|webhook)[^\s"'`]{0,180})["'`]/gi;
+
+      for (var si = 0; si < scripts.length; si++) {
+        if (scripts[si].src) continue;
+        var text = scripts[si].textContent || "";
+        if (text.length < 20) continue;
+        var m;
+
+        fetchRe.lastIndex = 0;
+        while ((m = fetchRe.exec(text)) !== null) {
+          emit("GET", m[1], "inline", "fetch(\"" + m[1].slice(0, 60) + "\")");
+        }
+        axiosRe.lastIndex = 0;
+        while ((m = axiosRe.exec(text)) !== null) {
+          emit(m[1].toUpperCase(), m[2], "inline", "axios." + m[1] + "(\"" + m[2].slice(0, 60) + "\")");
+        }
+        ajaxUrlRe.lastIndex = 0;
+        while ((m = ajaxUrlRe.exec(text)) !== null) {
+          emit("unknown", m[1], "inline", "$.ajax({url: \"" + m[1].slice(0, 60) + "\"})");
+        }
+        jqShortRe.lastIndex = 0;
+        while ((m = jqShortRe.exec(text)) !== null) {
+          emit(m[1].toUpperCase(), m[2], "inline", "$." + m[1] + "(\"" + m[2].slice(0, 60) + "\")");
+        }
+        xhrOpenRe.lastIndex = 0;
+        while ((m = xhrOpenRe.exec(text)) !== null) {
+          emit(m[1].toUpperCase(), m[2], "inline", ".open(\"" + m[1] + "\", \"" + m[2].slice(0, 60) + "\")");
+        }
+        restLiteralRe.lastIndex = 0;
+        while ((m = restLiteralRe.exec(text)) !== null) {
+          emit("unknown", m[1], "inline", "string literal");
+        }
+      }
+
+      /* Layer 2 — Window config object probing */
+
+      var configKeys = [
+        "__CONFIG__", "__APP_CONFIG__", "__SETTINGS__", "ENV", "__ENV__",
+        "config", "appConfig", "settings"
+      ];
+      var configUrlRe = /^https?:\/\//;
+
+      function scanConfigValue(val, source) {
+        if (typeof val === "string" && val.length > 3 && val.length < 500) {
+          if (configUrlRe.test(val) || API_PATH_RE.test(val)) {
+            emit("unknown", val, "config", source);
+          }
+        }
+      }
+
+      function scanConfigObj(obj, source) {
+        if (!obj || typeof obj !== "object") return;
+        try {
+          var keys = Object.keys(obj);
+          for (var ki = 0; ki < keys.length && ki < 100; ki++) {
+            try { scanConfigValue(obj[keys[ki]], source + "." + keys[ki]); } catch (eV) { /* ignore */ }
+          }
+        } catch (eK) { /* ignore */ }
+      }
+
+      for (var ci = 0; ci < configKeys.length; ci++) {
+        try {
+          var cObj = window[configKeys[ci]];
+          if (cObj && typeof cObj === "object") scanConfigObj(cObj, "window." + configKeys[ci]);
+          else if (typeof cObj === "string") scanConfigValue(cObj, "window." + configKeys[ci]);
+        } catch (eC) { /* ignore */ }
+      }
+      try {
+        if (window.__NEXT_DATA__ && window.__NEXT_DATA__.props) {
+          scanConfigObj(window.__NEXT_DATA__.props, "window.__NEXT_DATA__.props");
+        }
+      } catch (eNext) { /* ignore */ }
+      try {
+        if (window.__NUXT__ && typeof window.__NUXT__ === "object") {
+          scanConfigObj(window.__NUXT__, "window.__NUXT__");
+        }
+      } catch (eNuxt) { /* ignore */ }
+      try {
+        if (window.__remixContext && typeof window.__remixContext === "object") {
+          scanConfigObj(window.__remixContext, "window.__remixContext");
+        }
+      } catch (eRemix) { /* ignore */ }
+
+      /* Layer 3 — DOM attribute scan */
+
+      try {
+        var forms = document.querySelectorAll("form[action]");
+        for (var fi = 0; fi < forms.length; fi++) {
+          var action = forms[fi].getAttribute("action") || "";
+          if (action && API_PATH_RE.test(action)) {
+            var fMethod = (forms[fi].method || "GET").toUpperCase();
+            emit(fMethod, action, "dom", "<form action=\"" + action.slice(0, 60) + "\">");
+          }
+        }
+      } catch (eF) { /* ignore */ }
+      try {
+        var apiAttrs = document.querySelectorAll("[data-api-url], [data-api-endpoint], [data-url], [data-endpoint]");
+        for (var ai = 0; ai < apiAttrs.length; ai++) {
+          var el = apiAttrs[ai];
+          var attrNames = ["data-api-url", "data-api-endpoint", "data-url", "data-endpoint"];
+          for (var ati = 0; ati < attrNames.length; ati++) {
+            var av = el.getAttribute(attrNames[ati]);
+            if (av && (API_PATH_RE.test(av) || configUrlRe.test(av))) {
+              emit("unknown", av, "dom", attrNames[ati] + "=\"" + av.slice(0, 60) + "\"");
+            }
+          }
+        }
+      } catch (eA) { /* ignore */ }
+      try {
+        var anchors = document.querySelectorAll("a[href]");
+        for (var ali = 0; ali < anchors.length; ali++) {
+          var href = anchors[ali].getAttribute("href") || "";
+          if (href && API_PATH_RE.test(href)) {
+            emit("GET", href, "dom", "<a href=\"" + href.slice(0, 60) + "\">");
+          }
+        }
+      } catch (eL) { /* ignore */ }
+
+      /* Layer 5 — Script src path patterns */
+
+      for (var ssi = 0; ssi < scripts.length; ssi++) {
+        var sSrc = scripts[ssi].src || "";
+        if (sSrc && API_PATH_RE.test(sSrc)) {
+          emit("GET", sSrc, "script-src", "<script src=\"" + sSrc.slice(0, 60) + "\">");
+        }
+      }
+
+    } catch (e) { /* ignore */ }
+  }
+
   function runRedteamScans() {
     if (redteamScansActive) return;
     var g = ensureGuard();
@@ -1337,11 +1494,13 @@
         scanReflectedParams();
         scanCsrfTokens();
         scanTechStack();
+        scanApiEndpoints();
       });
     } else {
       scanReflectedParams();
       scanCsrfTokens();
       scanTechStack();
+      scanApiEndpoints();
     }
     hookExfilApis();
     observeXssSinks();
