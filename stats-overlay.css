@@ -1,0 +1,409 @@
+/* Floating block stats overlay (all sites) */
+#boxedin-block-stats-root {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 2147483646;
+  max-width: min(320px, calc(100vw - 24px));
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #1d1d1f;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+#boxedin-block-stats-root.boxedin-stats--dark {
+  color: #f2f2f7;
+  background: rgba(28, 28, 30, 0.92);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.boxedin-stats__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.boxedin-stats__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.boxedin-stats__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.boxedin-stats__reset-stats {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.04);
+  color: inherit;
+  cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.boxedin-stats__reset-stats:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.boxedin-stats--dark .boxedin-stats__reset-stats {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.boxedin-stats--dark .boxedin-stats__reset-stats:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.boxedin-stats--dark .boxedin-stats__header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.boxedin-stats__toggle {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.7;
+  border-radius: 4px;
+}
+
+.boxedin-stats__toggle:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.boxedin-stats--dark .boxedin-stats__toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.boxedin-stats__maximize {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.7;
+  border-radius: 4px;
+}
+
+.boxedin-stats__maximize:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.boxedin-stats--dark .boxedin-stats__maximize:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+#boxedin-block-stats-root.boxedin-stats--maximized {
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0 10px 10px 0;
+}
+
+#boxedin-block-stats-root.boxedin-stats--maximized .boxedin-stats__body {
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+}
+
+.boxedin-stats__body {
+  padding: 6px 10px 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+#boxedin-block-stats-root.boxedin-stats--collapsed .boxedin-stats__body {
+  display: none;
+}
+
+#boxedin-block-stats-root.boxedin-stats--collapsed {
+  max-width: min(280px, calc(100vw - 24px));
+}
+
+.boxedin-stats__section {
+  margin-top: 8px;
+}
+
+.boxedin-stats__section:first-of-type {
+  margin-top: 0;
+}
+
+.boxedin-stats__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.boxedin-stats__section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.8;
+}
+
+.boxedin-stats__section-sub {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.65;
+  flex-shrink: 0;
+}
+
+.boxedin-stats__section-empty {
+  margin: 0;
+  padding: 2px 0 4px;
+  font-size: 10px;
+  line-height: 1.35;
+  opacity: 0.65;
+  font-style: italic;
+}
+
+.boxedin-stats__hints {
+  margin-top: 10px;
+}
+
+.boxedin-stats__hints .boxedin-stats__hint {
+  margin-top: 0;
+}
+
+.boxedin-stats__hints .boxedin-stats__hint + .boxedin-stats__hint {
+  margin-top: 6px;
+}
+
+.boxedin-stats__hints .boxedin-stats__hint strong {
+  font-weight: 650;
+}
+
+.boxedin-stats__hint code {
+  font-size: 9px;
+  word-break: break-all;
+}
+
+.boxedin-stats__total {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  font-variant-numeric: tabular-nums;
+}
+
+.boxedin-stats--dark .boxedin-stats__total {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.boxedin-stats__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.boxedin-stats__label {
+  word-break: break-word;
+  opacity: 0.92;
+}
+
+.boxedin-stats__count {
+  font-weight: 600;
+  opacity: 1;
+}
+
+.boxedin-stats__hosts {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.boxedin-stats--dark .boxedin-stats__hosts {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.boxedin-stats__hosts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.boxedin-stats__hosts-title {
+  font-weight: 600;
+  font-size: 11px;
+  margin: 0;
+  opacity: 0.9;
+  flex: 1;
+  min-width: 0;
+}
+
+.boxedin-stats__hosts-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.boxedin-stats__hosts-btn {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.04);
+  color: inherit;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.boxedin-stats__hosts-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.boxedin-stats--dark .boxedin-stats__hosts-btn {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.boxedin-stats--dark .boxedin-stats__hosts-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.boxedin-stats__hosts-hint {
+  margin: 0 0 6px;
+  font-size: 9px;
+  opacity: 0.55;
+  line-height: 1.3;
+  font-style: italic;
+}
+
+.boxedin-stats__hosts-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 280px;
+  overflow-y: auto;
+  font-size: 10px;
+  line-height: 1.35;
+  flex: 1;
+  min-height: 0;
+}
+
+#boxedin-block-stats-root.boxedin-stats--maximized .boxedin-stats__hosts-list {
+  max-height: none;
+}
+
+.boxedin-stats__host-item {
+  padding: 1px 0;
+}
+
+.boxedin-stats__host-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.boxedin-stats__host-label:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.boxedin-stats--dark .boxedin-stats__host-label:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.boxedin-stats__host-check {
+  flex-shrink: 0;
+  margin: 0;
+  width: 12px;
+  height: 12px;
+  cursor: pointer;
+  accent-color: #c41e3a;
+}
+
+.boxedin-stats__host-item--blocked code {
+  text-decoration: line-through;
+  opacity: 0.5;
+  color: #c41e3a;
+}
+
+.boxedin-stats--dark .boxedin-stats__host-item--blocked code {
+  color: #ff6b6b;
+}
+
+.boxedin-stats__hosts-list code {
+  font-size: 10px;
+  word-break: break-all;
+}
+
+.boxedin-stats__hosts-off {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+
+.boxedin-stats--dark .boxedin-stats__hosts-off {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.boxedin-stats__enable-capture {
+  margin-top: 6px;
+}
+
+.boxedin-stats__hosts-empty {
+  margin-top: 8px;
+  font-size: 10px;
+  opacity: 0.75;
+  line-height: 1.35;
+}
+
+.boxedin-stats__hint {
+  margin-top: 8px;
+  font-size: 10px;
+  opacity: 0.65;
+  line-height: 1.3;
+}
+
+.boxedin-stats__empty {
+  opacity: 0.7;
+  font-style: italic;
+}

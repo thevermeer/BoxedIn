@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BoxedIn</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>BoxedIn</h1>
+
+      <p class="id-range-note">
+        Rule IDs: bundled static rules in <code>rules.json</code> use
+        <strong>1–9999</strong> (currently <strong>1–8</strong>). Your custom
+        rules use dynamic IDs <strong>10000–10049</strong>. See
+        <code>rules-ids.txt</code> in the extension folder when merging changes.
+      </p>
+
+      <p class="id-range-note id-range-note--muted">
+        A small <strong>BoxedIn blocks</strong> panel appears at the
+        bottom-left of every page with cumulative block counts per rule
+        (requires the <code>declarativeNetRequestFeedback</code> permission
+        so Chrome can report which rules matched). With hostname capture
+        enabled, the panel lists every hostname contacted by the page; check
+        a hostname to block it. Page-guard also reports
+        <strong>fetch/XHR/sendBeacon</strong> blocks for the LinkedIn URL
+        blocklist and separate counts for <code>chrome-extension://…</code>
+        probes (JS layer; stored as <code>pageGuardBlockStats</code>).
+        Counts are stored in this browser.
+      </p>
+
+      <label class="row row-block">
+        <input type="checkbox" id="captureRequestHostsEnabled" />
+        <span
+          >Record unique <strong>hostnames</strong> requested in each tab (not
+          full URLs or per-resource counts). Uses the
+          <code>webRequest</code> API; data is kept in memory until the service
+          worker restarts or the tab closes. Off by default.</span
+        >
+      </label>
+
+      <h2 class="section-title">Bundled rules</h2>
+      <p class="hint hint-tight">
+        Shipped in <code>rules.json</code>. LinkedIn changes URLs over time—if
+        something breaks, compare this table to the file and update both.
+      </p>
+      <div class="table-wrap">
+        <table class="bundled-rules-table">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">What (urlFilter)</th>
+              <th scope="col">Why</th>
+              <th scope="col">Risk if removed</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td><code>*linkedin.com/sensorCollect*</code></td>
+              <td>Blocks LinkedIn sensor/collect telemetry requests.</td>
+              <td>More sensor/collection traffic may reach LinkedIn.</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td><code>*chrome-extension://invalid*</code></td>
+              <td>Blocks extension-scheme probe URLs used by fingerprinting scripts.</td>
+              <td>Sites may probe <code>chrome-extension://</code> more effectively.</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td><code>*linkedin.com/li/track*</code></td>
+              <td>Blocks LinkedIn tracking / beacon endpoints.</td>
+              <td>Tracking and analytics requests to these paths may succeed.</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td><code>*collector-pxdojv695v.protechts.net*</code></td>
+              <td>Blocks Protechts third-party collector traffic.</td>
+              <td>That collector domain may receive requests again.</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td>
+                <code>*linkedin.com/realtime/realtimeFrontendClientConnectivityTracking*</code>
+              </td>
+              <td>Blocks realtime frontend connectivity tracking calls.</td>
+              <td>Extra connectivity / client tracking pings may fire.</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td><code>*linkedin.com/tscp-serving*</code></td>
+              <td>Blocks TSCP serving (ads / related content).</td>
+              <td>More TSCP-serving content or requests may load.</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td><code>*cs.ns1p.net*</code></td>
+              <td>Blocks NS1-related third-party requests (often ad/telemetry).</td>
+              <td>Traffic to that host may resume.</td>
+            </tr>
+            <tr>
+              <td>8</td>
+              <td><code>*linkedin.com/li/tscp/sct*</code></td>
+              <td>Blocks POSTs to LinkedIn TSCP SCT paths.</td>
+              <td>Those POSTs may succeed again (more telemetry / serving).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="section-title">Blocked hostnames</h2>
+      <p class="hint hint-tight">
+        Hostnames checked in the overlay. All sub-resource requests
+        (scripts, images, XHR, etc.) to these hosts are blocked via
+        dynamic DNR rules (IDs 20000+). Uncheck in the overlay or remove
+        here.
+      </p>
+      <ul id="blockedHostsList" class="phrase-list"></ul>
+      <div id="blockedHostsActions" class="blocked-hosts-actions" style="display:none">
+        <button type="button" id="clearBlockedHosts" class="btn btn-secondary">Clear all blocked hosts</button>
+      </div>
+
+      <h2 class="section-title">Custom network block rules</h2>
+      <p class="hint hint-tight">
+        Extra
+        <a
+          href="https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest#urlfilter"
+          target="_blank"
+          rel="noopener noreferrer"
+          >declarativeNetRequest</a
+        >
+        <code>urlFilter</code> patterns (block requests matching any). Bundled
+        rules above are unchanged; these are added as dynamic rules (IDs
+        10000+). Patterns are validated before save (length, wildcards, line
+        breaks). Apply status appears below after the service worker runs.
+      </p>
+      <p id="dnrApplyStatus" class="dnr-apply-status" aria-live="polite"></p>
+      <p id="dnrValidationHint" class="dnr-validation-hint" role="status"></p>
+      <ul id="dnrList" class="phrase-list"></ul>
+      <div class="add-row">
+        <input
+          type="text"
+          id="newDnrFilter"
+          placeholder="*hostname.com/path*"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="button" id="addDnrFilter" class="btn">Add rule</button>
+      </div>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

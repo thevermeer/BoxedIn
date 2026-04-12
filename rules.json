@@ -84,6 +84,43 @@
         "ping",
         "csp_report",
         "script",
+        "image",
+        "sub_frame",
+        "media",
+        "other"
+      ]
+    }
+  },
+  {
+    "id": 7,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "*cs.ns1p.net*",
+      "resourceTypes": [
+        "xmlhttprequest",
+        "ping",
+        "csp_report",
+        "script",
+        "image",
+        "sub_frame",
+        "stylesheet",
+        "media",
+        "other"
+      ]
+    }
+  },
+  {
+    "id": 8,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "*linkedin.com/li/tscp/sct*",
+      "resourceTypes": [
+        "xmlhttprequest",
+        "ping",
+        "csp_report",
+        "script",
         "other"
       ]
     }

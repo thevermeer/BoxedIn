@@ -1,10 +1,27 @@
 {
   "manifest_version": 3,
   "name": "BoxedIn",
-  "version": "1.0.0",
-  "description": "Blocks extension probes, LinkedIn telemetry (sensorCollect, li/track, realtime, tscp-serving, opaque tokens), protechts collector; optional empty.js redirect (see page-guard.js).",
-  "permissions": ["declarativeNetRequest"],
+  "version": "1.1.0",
+  "description": "Blocks extension probes, LinkedIn ads/telemetry (sensorCollect, li/track, li/tscp/sct POST, realtime, tscp-serving, opaque tokens), cs.ns1p.net, protechts collector; optional user-defined network block rules; on-page block stats overlay with per-hostname blocking checkboxes; optional per-tab unique hostname capture (webRequest). Does not block /voyager/api/graphql.",
+  "permissions": [
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback",
+    "storage",
+    "webRequest",
+    "contextMenus",
+    "scripting"
+  ],
+  "action": {
+    "default_title": "BoxedIn — click to turn off"
+  },
   "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
   "declarative_net_request": {
     "rule_resources": [
       {
@@ -17,10 +34,10 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["page-guard.js"],
-      "run_at": "document_start",
-      "world": "MAIN",
-      "all_frames": true
+      "js": ["stats-overlay.js"],
+      "css": ["stats-overlay.css"],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ]
 }

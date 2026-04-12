@@ -1,25 +1,15 @@
 /**
- * Runs in the page JS world (MAIN), as early as document_start allows.
- * Stops fingerprint scripts from probing chrome-extension:// and similar
- * URLs, and blocks selected LinkedIn / third-party telemetry URLs.
+ * MAIN world, document_start: block extension-URL probes and LinkedIn
+ * telemetry (fetch/XHR/beacon, src/href, DOM). Registered dynamically when
+ * the extension is enabled (not static content_scripts).
  *
- * Script dropping: dynamically inserted <script> nodes that look like
- * extension scanners are not attached (so they do not run).
- * Parser-inserted scripts in the initial HTML may still run before hooks;
- * API patches below are the main defense for those.
+ * /voyager/api/graphql is not blocked. Parser-inserted scripts may run before
+ * hooks; API patches are the main defense. Memory: bundles may still load;
+ * telemetry requests fail fast. Wrong DNR redirect patterns break the site.
  *
- * Memory: blocking network calls does not remove LinkedIn app bundles from
- * RAM. Bundles are still downloaded and parsed; telemetry paths fail fast.
- * To skip specific script files, add declarativeNetRequest redirect rules
- * in rules.json to extensionPath "/empty.js" (see empty.js). Wrong patterns
- * break the site.
- *
- * Limits: cannot stop server-side logic, native code, or probes that bypass
- * patched APIs. Side channels may still exist.
- *
- * Console: extension-scheme blocks are silent by default; set
- * __extensionProbeGuard.verboseExtensionBlocking for per-URL logs. Counts
- * are in __extensionProbeGuard.stats.extensionSchemeBlocked.
+ * Console: set __extensionProbeGuard.verboseExtensionBlocking for URL logs.
+ * Stats: extensionSchemeBlocked, linkedInBlocklistBlocked (all APIs),
+ * linkedInBlocklistFetchBlocked (fetch-only subset).
  */
 (function () {
   "use strict";
@@ -46,16 +36,83 @@
       if (typeof g.stats.extensionSchemeBlocked !== "number") {
         g.stats.extensionSchemeBlocked = 0;
       }
+      if (typeof g.stats.linkedInBlocklistBlocked !== "number") {
+        g.stats.linkedInBlocklistBlocked = 0;
+      }
+      if (typeof g.stats.linkedInBlocklistFetchBlocked !== "number") {
+        g.stats.linkedInBlocklistFetchBlocked = 0;
+      }
       return g;
     } catch (_) {
       return {
         verboseExtensionBlocking: false,
-        stats: { extensionSchemeBlocked: 0 },
+        stats: {
+          extensionSchemeBlocked: 0,
+          linkedInBlocklistBlocked: 0,
+          linkedInBlocklistFetchBlocked: 0,
+        },
       };
     }
   }
 
   ensureGuard();
+
+  /**
+   * Notifies the isolated-world overlay (injected in the top frame). Page-guard
+   * runs in all frames; subframes must post to window.top or the top listener
+   * never sees the event.
+   */
+  function postStatToOverlay(msg) {
+    try {
+      var target = window;
+      try {
+        if (window.top) {
+          target = window.top;
+        }
+      } catch (eTop) {
+        /* cross-origin top reference — use window */
+      }
+      if (typeof target.postMessage === "function") {
+        target.postMessage(msg, "*");
+      }
+    } catch (e1) {
+      try {
+        if (typeof window.postMessage === "function") {
+          window.postMessage(msg, "*");
+        }
+      } catch (e2) {
+        /* ignore */
+      }
+    }
+  }
+
+  /**
+   * Increments LinkedIn blocklist stats and notifies the extension overlay
+   * (isolated world) via postMessage.
+   */
+  function bumpLinkedInBlocklistStat() {
+    var g = ensureGuard();
+    g.stats.linkedInBlocklistBlocked += 1;
+    try {
+      postStatToOverlay({
+        source: "boxedin-page-guard",
+        type: "stat",
+        key: "linkedInBlocklist",
+        delta: 1,
+      });
+    } catch (e1) {
+      /* ignore */
+    }
+  }
+
+  /**
+   * Increments only the fetch()-path LinkedIn blocklist counter (independent of
+   * XHR/beacon); also included in linkedInBlocklistBlocked.
+   */
+  function bumpLinkedInBlocklistFetchStat() {
+    var g = ensureGuard();
+    g.stats.linkedInBlocklistFetchBlocked += 1;
+  }
 
   /**
    * Increments extension-scheme block stats; logs only when
@@ -65,6 +122,16 @@
   function logExtensionSchemeBlock(action, detail) {
     var g = ensureGuard();
     g.stats.extensionSchemeBlocked += 1;
+    try {
+      postStatToOverlay({
+        source: "boxedin-page-guard",
+        type: "stat",
+        key: "extensionScheme",
+        delta: 1,
+      });
+    } catch (ePg) {
+      /* ignore */
+    }
     if (g.verboseExtensionBlocking) {
       log(action, detail);
     }
@@ -165,6 +232,47 @@
     if (!/[0-9]/.test(seg) || !/[a-zA-Z]/.test(seg)) return false;
     if (LINKEDIN_ALLOWED_OPAQUE_SEGMENTS.has(seg.toLowerCase())) return false;
     return true;
+  }
+
+  /**
+   * True when the URL host is `cs.ns1p.net` (third-party; blocks all paths).
+   */
+  function isNs1pBlockedUrl(url) {
+    if (!url) return false;
+    try {
+      var u = new URL(
+        String(url),
+        typeof document !== "undefined" ? document.baseURI : undefined
+      );
+      return u.hostname.toLowerCase() === "cs.ns1p.net";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * True for LinkedIn `POST` to `/li/tscp/sct` (TSCP session/telemetry).
+   * Other methods are not blocked here so declarativeNetRequest can own
+   * path-level rules without double-counting GET (if any).
+   */
+  function isLinkedInLiTscpSctPost(url, method) {
+    if (!url) return false;
+    try {
+      var u = new URL(
+        String(url),
+        typeof document !== "undefined" ? document.baseURI : undefined
+      );
+      var h = u.hostname.toLowerCase();
+      var onLinkedIn =
+        h === "linkedin.com" || h.slice(-13) === ".linkedin.com";
+      if (!onLinkedIn) return false;
+      var p = u.pathname;
+      if (p.indexOf("/li/tscp/sct") !== 0) return false;
+      var m = method == null ? "GET" : String(method);
+      return m.toUpperCase() === "POST";
+    } catch (_) {
+      return false;
+    }
   }
 
   /**
@@ -391,7 +499,18 @@
     "data:image/png;base64,";
 
   /**
-   * Wraps `window.fetch` to reject blocked extension-scheme, LinkedIn
+   * Resolves blocked fetch() with a 502 Response (response.ok false) so callers
+   * that omit .catch() do not surface uncaught rejections; check response.ok.
+   */
+  function blockedFetchResponse() {
+    return new Response(null, {
+      status: 502,
+      statusText: "Bad Gateway",
+    });
+  }
+
+  /**
+   * Wraps `window.fetch` to short-circuit blocked extension-scheme, LinkedIn
    * blocklist, and protechts collector URLs before the request runs.
    */
   function patchFetch() {
@@ -400,24 +519,32 @@
     window.fetch = function (input, init) {
       var raw = requestUrlFromFetchInput(input);
       var abs = resolveUrlAbsolute(raw);
+      var fetchMethod =
+        init && init.method ? String(init.method) : "GET";
       if (isExtensionSchemeUrl(abs)) {
         logExtensionSchemeBlock(
           "fetch blocked (extension scheme)",
           truncate(abs, 200)
         );
-        return Promise.reject(new TypeError("Blocked extension-URL fetch"));
+        return Promise.resolve(blockedFetchResponse());
+      }
+      if (isNs1pBlockedUrl(abs)) {
+        log("fetch blocked (cs.ns1p.net)", truncate(abs, 200));
+        return Promise.resolve(blockedFetchResponse());
+      }
+      if (isLinkedInLiTscpSctPost(abs, fetchMethod)) {
+        log("fetch blocked (LinkedIn li/tscp/sct POST)", truncate(abs, 200));
+        return Promise.resolve(blockedFetchResponse());
       }
       if (isLinkedInBlocklistedUrl(abs)) {
         log("fetch blocked (LinkedIn blocklist)", truncate(abs, 200));
-        return Promise.reject(
-          new TypeError("Blocked LinkedIn telemetry fetch")
-        );
+        bumpLinkedInBlocklistFetchStat();
+        bumpLinkedInBlocklistStat();
+        return Promise.resolve(blockedFetchResponse());
       }
       if (isProtechtsCollectorUrl(abs)) {
         log("fetch blocked (protechts collector)", truncate(abs, 200));
-        return Promise.reject(
-          new TypeError("Blocked protechts collector fetch")
-        );
+        return Promise.resolve(blockedFetchResponse());
       }
       return orig.apply(this, arguments);
     };
@@ -440,11 +567,26 @@
         );
         throw new TypeError("Blocked extension-URL XHR");
       }
+      if (isNs1pBlockedUrl(abs)) {
+        log(
+          "XMLHttpRequest.open blocked (cs.ns1p.net)",
+          truncate(abs, 200)
+        );
+        throw new TypeError("Blocked ns1p XHR");
+      }
+      if (isLinkedInLiTscpSctPost(abs, method)) {
+        log(
+          "XMLHttpRequest.open blocked (LinkedIn li/tscp/sct POST)",
+          truncate(abs, 200)
+        );
+        throw new TypeError("Blocked LinkedIn li/tscp/sct POST XHR");
+      }
       if (isLinkedInBlocklistedUrl(abs)) {
         log(
           "XMLHttpRequest.open blocked (LinkedIn blocklist)",
           truncate(abs, 200)
         );
+        bumpLinkedInBlocklistStat();
         throw new TypeError("Blocked LinkedIn telemetry XHR");
       }
       if (isProtechtsCollectorUrl(abs)) {
@@ -479,8 +621,20 @@
         );
         return false;
       }
+      if (isNs1pBlockedUrl(abs)) {
+        log("sendBeacon blocked (cs.ns1p.net)", truncate(abs, 200));
+        return false;
+      }
+      if (isLinkedInLiTscpSctPost(abs, "POST")) {
+        log(
+          "sendBeacon blocked (LinkedIn li/tscp/sct POST)",
+          truncate(abs, 200)
+        );
+        return false;
+      }
       if (isLinkedInBlocklistedUrl(abs)) {
         log("sendBeacon blocked (LinkedIn blocklist)", truncate(abs, 200));
+        bumpLinkedInBlocklistStat();
         return false;
       }
       if (isProtechtsCollectorUrl(abs)) {
@@ -518,6 +672,19 @@
               (label || propName) + "." + propName + " neutralized",
               truncate(v, 200)
             );
+            return origSet.call(this, BROKEN_DATA_IMG);
+          }
+          if (isNs1pBlockedUrl(abs)) {
+            log(
+              (label || propName) + "." + propName + " neutralized (ns1p)",
+              truncate(v, 200)
+            );
+            if (
+              label === "HTMLIFrameElement" ||
+              label === "HTMLScriptElement"
+            ) {
+              return origSet.call(this, "about:blank");
+            }
             return origSet.call(this, BROKEN_DATA_IMG);
           }
           if (isProtechtsCollectorUrl(abs)) {
@@ -568,6 +735,13 @@
             );
             return origSet.call(this, "about:blank");
           }
+          if (isNs1pBlockedUrl(abs)) {
+            log(
+              (label || "element") + ".href neutralized (ns1p)",
+              truncate(v, 200)
+            );
+            return origSet.call(this, "about:blank");
+          }
           if (isProtechtsCollectorUrl(abs)) {
             log(
               (label || "element") + ".href neutralized (protechts)",
@@ -601,6 +775,20 @@
             truncate(value, 200)
           );
           if (n === "src") return orig.call(this, "src", BROKEN_DATA_IMG);
+          return orig.call(this, "href", "about:blank");
+        }
+        if (isNs1pBlockedUrl(abs)) {
+          log(
+            "setAttribute(" + n + ") neutralized (ns1p)",
+            truncate(value, 200)
+          );
+          if (n === "src") {
+            var tagN = String(this.tagName || "").toUpperCase();
+            if (tagN === "IFRAME" || tagN === "SCRIPT") {
+              return orig.call(this, "src", "about:blank");
+            }
+            return orig.call(this, "src", BROKEN_DATA_IMG);
+          }
           return orig.call(this, "href", "about:blank");
         }
         if (isProtechtsCollectorUrl(abs)) {
@@ -653,7 +841,7 @@
 
   try {
     var g = ensureGuard();
-    g.version = "1.9.0";
+    g.version = "1.1.0";
     g.loadedAt = Date.now();
     g.logPrefix = LOG_PREFIX;
     /**

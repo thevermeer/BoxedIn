@@ -1,0 +1,21 @@
+Declarative Net Request ID ranges for BoxedIn (avoid overlaps when merging or editing).
+
+Bundled static rules
+  File: rules.json (manifest declarative_net_request.rule_resources)
+  ID range: 1–9999 reserved for bundled rules. Current rules use ids 1–8.
+  When adding a new bundled rule, pick the next free id in this file and update
+  the "Bundled rules" table in options.html.
+
+User-defined dynamic rules
+  File: background.js (STORAGE_KEY userDnrUrlFilters)
+  ID range: 10000–10049 (USER_RULE_ID_BASE 10000, MAX_USER_RULES 50).
+  These are applied via chrome.declarativeNetRequest.updateDynamicRules.
+
+Per-hostname blocking (overlay checkboxes)
+  File: background.js (STORAGE_BLOCKED_HOSTS blockedHosts)
+  ID range: 20000–20499 (HOST_BLOCK_RULE_ID_BASE 20000, MAX_HOST_BLOCK_RULES 500).
+  These are applied via chrome.declarativeNetRequest.updateDynamicRules using
+  requestDomains conditions. Users toggle them from the overlay checkbox list.
+
+Do not assign bundled rule ids in the 10000+ range or user rule ids in 1–9999.
+Host block rule ids must stay in the 20000–20499 range.

@@ -1,0 +1,265 @@
+body {
+  font-family: sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 16px 20px;
+  color: #1d1d1f;
+  background: #f5f5f7;
+}
+
+main {
+  max-width: 52rem;
+}
+
+h1 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+h2.section-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #555;
+  margin: 18px 0 8px;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.row input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.row-block {
+  align-items: flex-start;
+  margin-bottom: 12px;
+  max-width: 48rem;
+}
+
+.row-block span {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.hint {
+  margin: 10px 0 0 26px;
+  font-size: 12px;
+  color: #666;
+}
+
+.hint-tight {
+  margin-left: 0;
+  margin-top: 8px;
+}
+
+.phrase-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.phrase-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.phrase-list .phrase-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.phrase-list .phrase-input:focus {
+  outline: none;
+  border-color: #0070d8;
+  box-shadow: 0 0 0 2px rgba(0, 112, 216, 0.2);
+}
+
+.btn {
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  background: #0070d8;
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: #0060b8;
+}
+
+.btn-secondary {
+  background: #e8e8ed;
+  color: #1d1d1f;
+}
+
+.btn-secondary:hover {
+  background: #dcdce2;
+}
+
+.btn-remove {
+  background: transparent;
+  color: #c41e3a;
+  padding: 6px 10px;
+}
+
+.btn-remove:hover {
+  background: rgba(196, 30, 58, 0.08);
+}
+
+.add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.add-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.add-row input:focus {
+  outline: none;
+  border-color: #0070d8;
+  box-shadow: 0 0 0 2px rgba(0, 112, 216, 0.2);
+}
+
+.actions {
+  margin-top: 16px;
+}
+
+.empty-hint {
+  font-size: 13px;
+  color: #888;
+  margin: 0 0 10px;
+  font-style: italic;
+}
+
+.id-range-note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #444;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: #e8f4fc;
+  border-radius: 8px;
+  border: 1px solid #c5dff3;
+}
+
+.id-range-note--muted {
+  background: #f0f0f2;
+  border-color: #ddd;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin: 8px 0 20px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  background: #fff;
+}
+
+.bundled-rules-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.bundled-rules-table th,
+.bundled-rules-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.bundled-rules-table th {
+  font-weight: 600;
+  color: #333;
+  background: #f8f8fa;
+  white-space: nowrap;
+}
+
+.bundled-rules-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.bundled-rules-table td:first-child {
+  white-space: nowrap;
+  font-weight: 600;
+  color: #555;
+}
+
+.bundled-rules-table code {
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.blocked-host-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  word-break: break-all;
+  padding: 6px 0;
+}
+
+.blocked-hosts-actions {
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.dnr-apply-status {
+  font-size: 12px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f0f0f2;
+  color: #444;
+}
+
+.dnr-apply-status--ok {
+  background: #e8f6ec;
+  color: #1b5e20;
+  border: 1px solid #c8e6c9;
+}
+
+.dnr-apply-status--error {
+  background: #ffebee;
+  color: #b71c1c;
+  border: 1px solid #ffcdd2;
+}
+
+.dnr-validation-hint {
+  display: none;
+  font-size: 12px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fff8e1;
+  color: #856404;
+  border: 1px solid #ffe082;
+}
