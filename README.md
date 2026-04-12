@@ -4,6 +4,24 @@ A Chrome extension that combines **defensive network blocking** with an **offens
 
 Manifest V3 · CC0 1.0 License
 
+## Chrome Extension in Development
+This simple chrome extension block LinkedIn extension sniffing and teelemetry callback
+
+<img width="739" height="271" alt="image" src="https://github.com/user-attachments/assets/5660d68e-9e09-4ac5-9c5f-f48cb142c973" />
+
+## Installed via Developer Mode
+I am not publishing this to Chrome extensions so, to install in Chrome:
+- Clone the repo
+- Goto to the extensions
+- Select `Load Unpacked` in the top-left corner
+<img width="423" height="110" alt="image" src="https://github.com/user-attachments/assets/5c42fd0f-1b39-4ae6-bea2-aeecd2330144" />
+
+- Choose the folder and select `open`
+- Refresh LinkedIn in Chrome and inspect the JS console.
+
+## Suggestions?
+LMK if this works, if you have additional URLs to add, or suggestions on improving the functionality
+
 ---
 
 ## Table of Contents
@@ -22,6 +40,7 @@ Manifest V3 · CC0 1.0 License
   - [Exfil Tab](#exfil-tab)
   - [Inject Tab](#inject-tab)
   - [Recon Tab](#recon-tab)
+  - [OSINT Tab](#osint-tab)
   - [Request Repeater](#request-repeater)
 - [Options Page](#options-page)
 - [File Reference](#file-reference)
@@ -207,6 +226,22 @@ Performs passive tech-stack fingerprinting to identify the site's CMS, JavaScrip
 - **Server** — PHP, Express, Nginx, Apache, ASP.NET, Cloudflare, OpenResty, IIS, Gunicorn, Uvicorn.
 
 Each finding includes an **attack-surface note** summarizing relevant risks. For example: WordPress findings note XML-RPC and plugin/theme CVE exposure; jQuery findings flag DOM XSS via `$.html()` and version-specific CVEs; React findings highlight `dangerouslySetInnerHTML` and client-side state in DevTools; analytics findings warn about PII leakage through query strings and custom dimensions; server header findings flag version disclosure and known CVE risk.
+
+### OSINT Tab
+
+Integrates with **crt.sh**, a public certificate transparency log search engine, to discover SSL certificates, subdomains, and exposed internal domain names associated with a target domain. Searches open in a new browser tab — no API keys or accounts required.
+
+The OSINT panel provides:
+
+- **One-click search** — the current page's domain is shown with a "Search crt.sh" button that opens `https://crt.sh/?q=<domain>` in a new tab.
+- **Manual domain input** — a text field for searching arbitrary domains not tied to the current page.
+
+In addition to the dedicated tab, crt.sh search icons appear inline across other panels:
+
+- **Blocks panel** — a magnifying glass icon next to each observed hostname in the hostname capture list (when red-team mode is enabled).
+- **Exfil panel** — a magnifying glass icon next to each third-party host in the exfiltration event stream, alongside the existing "allow" button.
+
+Certificate transparency logs reveal every SSL/TLS certificate ever issued for a domain, which is useful for discovering subdomains (including staging, internal, and forgotten environments), identifying certificate misconfigurations, and mapping the full scope of an organization's public-facing infrastructure.
 
 ### Request Repeater
 

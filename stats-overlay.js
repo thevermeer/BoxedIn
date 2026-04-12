@@ -222,6 +222,17 @@
     renderActivePanel();
   }
 
+  /** Open a crt.sh certificate transparency search for a domain in a new tab. */
+  function openCrtShSearch(domain) {
+    if (!domain) return;
+    var url = "https://crt.sh/?q=" + encodeURIComponent(domain);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
   /** Dispatch a fetch-and-render cycle for whichever tab is active. */
   function renderActivePanel() {
     if (activeTab === "blocks") fetchStats();
@@ -229,6 +240,7 @@
     else if (activeTab === "exfil") fetchExfilAndRender();
     else if (activeTab === "inject") fetchInjectAndRender();
     else if (activeTab === "recon") fetchReconAndRender();
+    else if (activeTab === "osint") renderOsintPanel();
   }
 
   /* ── Wire helpers ──────────────────────────────────────────────────── */
@@ -333,7 +345,8 @@
         { id: "auth", label: "Auth" },
         { id: "exfil", label: "Exfil" },
         { id: "inject", label: "Inject" },
-        { id: "recon", label: "Recon" }
+        { id: "recon", label: "Recon" },
+        { id: "osint", label: "OSINT" }
       ];
       tabsHtml = '<div class="boxedin-stats__tabs">';
       for (var t = 0; t < tabDefs.length; t++) {
@@ -499,7 +512,10 @@
             '<label class="boxedin-stats__host-label">' +
             '<input type="checkbox" class="boxedin-stats__host-check" data-host="' +
             escapeAttr(hosts[h]) + '"' + (isBlocked ? " checked" : "") + ' />' +
-            '<code>' + escapeHtml(hosts[h]) + '</code></label></li>');
+            '<code>' + escapeHtml(hosts[h]) + '</code></label>' +
+            (redteamEnabled ? '<button type="button" class="boxedin-rt__osint-btn" data-domain="' +
+            escapeAttr(hosts[h]) + '" title="Search crt.sh">\uD83D\uDD0D</button>' : '') +
+            '</li>');
         }
         parts.push('</ul>');
       } else {
@@ -574,6 +590,17 @@
               setTimeout(function () { copyBtn.textContent = label; }, 1600);
             });
           });
+        }
+
+        var osintBtns = root.querySelectorAll(".boxedin-stats__hosts-list .boxedin-rt__osint-btn");
+        for (var ob = 0; ob < osintBtns.length; ob++) {
+          (function (btn) {
+            btn.addEventListener("click", function (ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              openCrtShSearch(btn.getAttribute("data-domain"));
+            });
+          })(osintBtns[ob]);
         }
       }
     } else {
@@ -782,6 +809,8 @@
       if (isThirdParty && evtHost) {
         parts.push(' <button type="button" class="boxedin-rt__allow-btn" data-host="' +
           escapeAttr(evtHost) + '" title="Add to exfil allowlist">allow</button>');
+        parts.push(' <button type="button" class="boxedin-rt__osint-btn" data-domain="' +
+          escapeAttr(evtHost) + '" title="Search crt.sh">\uD83D\uDD0D</button>');
       }
       parts.push('</span>' +
         '<span class="boxedin-rt__event-ts">' + escapeHtml(formatTime(evt.ts)) + '</span>' +
@@ -869,6 +898,17 @@
           });
         });
       })(allowBtns[a]);
+    }
+
+    var exfilOsintBtns = root.querySelectorAll(".boxedin-rt__stream .boxedin-rt__osint-btn");
+    for (var eo = 0; eo < exfilOsintBtns.length; eo++) {
+      (function (btn) {
+        btn.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openCrtShSearch(btn.getAttribute("data-domain"));
+        });
+      })(exfilOsintBtns[eo]);
     }
   }
 
@@ -1107,6 +1147,75 @@
       });
     } catch (e) {
       if (activeTab === "recon") renderShell(buildReconBody([]));
+    }
+  }
+
+  /* ── OSINT panel ─────────────────────────────────────────────────── */
+
+  /** Build and render the OSINT panel with crt.sh search for the current domain. */
+  function renderOsintPanel() {
+    if (!redteamEnabled) {
+      renderShell('<p class="boxedin-rt__disabled">Enable red-team tools in the BoxedIn options page.</p>');
+      return;
+    }
+
+    var pageDomain = "";
+    try { pageDomain = window.location.hostname || ""; } catch (e) { /* ignore */ }
+
+    var parts = [];
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">crt.sh — Certificate Transparency</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Search certificate transparency logs for SSL certificates, subdomains, and exposed internal domain names.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-search-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">Search crt.sh</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-input" placeholder="example.com" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
+    renderShell(parts.join(""));
+    wireOsintPanel();
+  }
+
+  /** Bind click handlers for the OSINT panel search buttons and input. */
+  function wireOsintPanel() {
+    var searchBtn = root.querySelector(".boxedin-rt__osint-search-btn");
+    if (searchBtn) {
+      searchBtn.addEventListener("click", function () {
+        openCrtShSearch(searchBtn.getAttribute("data-domain"));
+      });
+    }
+
+    var manualBtn = root.querySelector(".boxedin-rt__osint-manual-btn");
+    var manualInput = root.querySelector(".boxedin-rt__osint-input");
+    if (manualBtn && manualInput) {
+      manualBtn.addEventListener("click", function () {
+        var val = manualInput.value.trim();
+        if (val) openCrtShSearch(val);
+      });
+      manualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = manualInput.value.trim();
+          if (val) openCrtShSearch(val);
+        }
+      });
     }
   }
 
@@ -1414,7 +1523,7 @@
 
       if (redteamEnabled) {
         var savedTab = items[STORAGE_ACTIVE_TAB];
-        if (savedTab === "auth" || savedTab === "exfil" || savedTab === "inject" || savedTab === "recon") {
+        if (savedTab === "auth" || savedTab === "exfil" || savedTab === "inject" || savedTab === "recon" || savedTab === "osint") {
           activeTab = savedTab;
         }
         enablePageGuardRedteam();

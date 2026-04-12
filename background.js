@@ -813,6 +813,14 @@
   }
 
   chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+    if (msg && msg.type === "BOXEDIN_OPEN_TAB") {
+      var tabUrl = msg.url || "";
+      if (tabUrl.indexOf("https://") === 0) {
+        chrome.tabs.create({ url: tabUrl });
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
     if (msg && msg.type === "BOXEDIN_PAGE_GUARD_STAT") {
       applyPageGuardStatMessage(msg);
       sendResponse({ ok: true });
