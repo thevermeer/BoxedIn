@@ -22,6 +22,13 @@
   var cachedBlocksPayload = null;
   var cachedExfilEvents = [];
   var cachedPageGuardAuth = [];
+  var cachedSubdomains = [];
+  var cachedBaseDomain = "";
+  var cachedSourceMaps = [];
+  var cachedProbeResults = null;
+  var cachedDnsFindings = null;
+  var cachedDnsDomain = "";
+  var cachedCorsProbe = null;
   var exfilFilter = null;
 
   var repeaterRoot = null;
@@ -132,6 +139,25 @@
         }, function () { if (chrome.runtime.lastError) {} });
       } catch (e) { /* ignore */ }
       if (activeTab === "recon") renderActivePanel();
+      return;
+    }
+    if (data.type === "recon") {
+      if (data.subtype === "subdomains") {
+        cachedSubdomains = data.subdomains || [];
+        cachedBaseDomain = data.baseDomain || "";
+      } else if (data.subtype === "sourcemaps") {
+        cachedSourceMaps = data.findings || [];
+      }
+      if (activeTab === "recon") renderActivePanel();
+      return;
+    }
+    if (data.type === "deps") {
+      try {
+        chrome.runtime.sendMessage({
+          type: "BOXEDIN_STORE_DEPS_FINDING", findings: data.findings || []
+        }, function () { if (chrome.runtime.lastError) {} });
+      } catch (e) { /* ignore */ }
+      if (activeTab === "deps") renderActivePanel();
       return;
     }
   }
@@ -363,6 +389,17 @@
     } catch (e) { /* ignore */ }
   }
 
+  /** Open a SecurityTrails DNS history lookup for a domain in a new tab. */
+  function openSecurityTrailsSearch(domain) {
+    if (!domain) return;
+    var url = "https://securitytrails.com/domain/" + encodeURIComponent(domain) + "/dns";
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
   /** Dispatch a fetch-and-render cycle for whichever tab is active. */
   function renderActivePanel() {
     if (activeTab === "blocks") fetchStats();
@@ -371,6 +408,8 @@
     else if (activeTab === "inject") fetchInjectAndRender();
     else if (activeTab === "recon") fetchReconAndRender();
     else if (activeTab === "apis") fetchApisAndRender();
+    else if (activeTab === "deps") fetchDepsAndRender();
+    else if (activeTab === "timeline") fetchTimelineAndRender();
     else if (activeTab === "osint") renderOsintPanel();
   }
 
@@ -425,6 +464,40 @@
     });
   }
 
+  function wireExportFindings() {
+    var btn = root.querySelector(".boxedin-stats__export-findings");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      btn.disabled = true;
+      btn.textContent = "\u2026";
+      try {
+        chrome.runtime.sendMessage({ type: "BOXEDIN_EXPORT_ALL_FINDINGS" }, function (response) {
+          if (chrome.runtime.lastError || !response || !response.report) {
+            btn.textContent = "\u2717";
+            setTimeout(function () { btn.textContent = "\u2B07"; btn.disabled = false; }, 2000);
+            return;
+          }
+          var report = response.report;
+          report.pageGuardAuth = cachedPageGuardAuth;
+          report.subdomains = cachedSubdomains;
+          report.sourceMaps = cachedSourceMaps;
+          var blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = "boxedin-report-" + new Date().toISOString().slice(0, 10) + ".json";
+          a.click();
+          URL.revokeObjectURL(url);
+          btn.textContent = "\u2713";
+          setTimeout(function () { btn.textContent = "\u2B07"; btn.disabled = false; }, 2000);
+        });
+      } catch (e) {
+        btn.textContent = "\u2717";
+        setTimeout(function () { btn.textContent = "\u2B07"; btn.disabled = false; }, 2000);
+      }
+    });
+  }
+
   /* ── Render shell (header + tabs + body) ───────────────────────────── */
 
   /**
@@ -458,6 +531,7 @@
       headerActions += '<button type="button" class="boxedin-stats__reset-stats" title="Clear cumulative DNR and page-guard block counts (this browser)">Reset stats</button>';
     }
     if (redteamEnabled) {
+      headerActions += '<button type="button" class="boxedin-stats__export-findings" title="Export all findings as JSON">\u2B07</button>';
       headerActions += '<button type="button" class="boxedin-stats__open-repeater" title="Open request repeater">\u21C5</button>';
     }
     headerActions +=
@@ -478,6 +552,8 @@
         { id: "inject", label: "Inject" },
         { id: "recon", label: "Recon" },
         { id: "apis", label: "APIs" },
+        { id: "deps", label: "Deps" },
+        { id: "timeline", label: "Timeline" },
         { id: "osint", label: "OSINT" }
       ];
       tabsHtml = '<div class="boxedin-stats__tabs">';
@@ -500,6 +576,7 @@
     wireToggle();
     wireMaximize();
     wireOpenRepeater();
+    wireExportFindings();
     if (redteamEnabled) wireTabs();
 
     var newBody = root.querySelector(".boxedin-stats__body");
@@ -866,11 +943,18 @@
 
     for (var pga = 0; pga < cachedPageGuardAuth.length; pga++) {
       var pgData = cachedPageGuardAuth[pga];
-      if (pgData.findings) {
+      if (pgData.subtype === "storage-sensitive" && pgData.findings) {
         for (var fi = 0; fi < pgData.findings.length; fi++) {
           var f = pgData.findings[fi];
           critical.push(escapeHtml(f.issue) + ": <code>" + escapeHtml(f.key) + "</code> = " +
             escapeHtml(f.preview || ""));
+        }
+      }
+      if (pgData.subtype === "exposed-secret" && pgData.findings) {
+        for (var esi = 0; esi < pgData.findings.length; esi++) {
+          var es = pgData.findings[esi];
+          critical.push("Exposed secret: <strong>" + escapeHtml(es.name) + "</strong> in " +
+            escapeHtml(es.location || "page") + " \u2014 <code>" + escapeHtml(es.preview || "") + "</code>");
         }
       }
     }
@@ -1298,6 +1382,113 @@
     }
     parts.push('</div>');
 
+    var openRedirects = data.openRedirects || [];
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Open Redirects</div>');
+    if (openRedirects.length > 0) {
+      for (var ori = 0; ori < openRedirects.length; ori++) {
+        var or = openRedirects[ori];
+        parts.push(
+          '<div class="boxedin-rt__item">' +
+          '<span class="boxedin-rt__badge boxedin-rt__badge--warning">Warning</span> ' +
+          '<span class="boxedin-rt__item-label">Redirect param: ' + escapeHtml(or.param || "") + '</span>' +
+          '<div class="boxedin-rt__item-detail">' + escapeHtml((or.value || "").slice(0, 150)) + '</div></div>');
+      }
+    } else {
+      parts.push('<p class="boxedin-rt__none">No open redirect parameters detected.</p>');
+    }
+    parts.push('</div>');
+
+    var mixedContent = data.mixedContent || [];
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Mixed Content</div>');
+    if (mixedContent.length > 0) {
+      for (var mci = 0; mci < mixedContent.length; mci++) {
+        var mc = mixedContent[mci];
+        parts.push(
+          '<div class="boxedin-rt__item">' +
+          '<span class="boxedin-rt__badge boxedin-rt__badge--warning">Warning</span> ' +
+          '<span class="boxedin-rt__item-label">HTTP &lt;' + escapeHtml(mc.tag || "unknown") + '&gt;</span>' +
+          '<div class="boxedin-rt__item-detail">' + escapeHtml((mc.url || "").slice(0, 150)) + '</div></div>');
+      }
+    } else {
+      parts.push('<p class="boxedin-rt__none">No mixed content detected' + (window.location.protocol !== "https:" ? ' (page is not HTTPS)' : '') + '.</p>');
+    }
+    parts.push('</div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">CORS Probe</div>');
+    if (cachedCorsProbe) {
+      if (cachedCorsProbe.error) {
+        parts.push('<p class="boxedin-rt__none">Request failed: ' + escapeHtml(cachedCorsProbe.error) + '</p>');
+      } else if (cachedCorsProbe.vulnerable) {
+        parts.push(
+          '<div class="boxedin-rt__item">' +
+          '<span class="boxedin-rt__badge boxedin-rt__badge--critical">Critical</span> ' +
+          '<span class="boxedin-rt__item-label">' + escapeHtml(cachedCorsProbe.reason) + '</span>' +
+          '<div class="boxedin-rt__item-detail">ACAO: ' + escapeHtml(cachedCorsProbe.acao) +
+          (cachedCorsProbe.acac ? ' | ACAC: ' + escapeHtml(cachedCorsProbe.acac) : '') + '</div></div>');
+      } else {
+        parts.push(
+          '<div class="boxedin-rt__item">' +
+          '<span class="boxedin-rt__badge boxedin-rt__badge--info">Safe</span> ' +
+          '<span class="boxedin-rt__item-label">Origin not reflected</span>' +
+          '<div class="boxedin-rt__item-detail">ACAO: ' + escapeHtml(cachedCorsProbe.acao || "(none)") + '</div></div>');
+      }
+      parts.push('<button type="button" class="boxedin-rt__probe-cors-btn">Re-test CORS</button>');
+    } else {
+      parts.push(
+        '<p class="boxedin-rt__osint-hint">Actively test whether the server reflects arbitrary origins in Access-Control-Allow-Origin.</p>' +
+        '<button type="button" class="boxedin-rt__probe-cors-btn">Test CORS</button>');
+    }
+    parts.push('</div>');
+
+    var formInventory = data.formInventory || {};
+    var formForms = formInventory.forms || [];
+    var formStandalone = formInventory.standaloneInputs || [];
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Form Surface' +
+      (formForms.length > 0 ? '<span class="boxedin-rt__recon-count">' + formForms.length + ' forms</span>' : '') +
+      '</div>');
+    if (formForms.length > 0 || formStandalone.length > 0) {
+      for (var ffi = 0; ffi < formForms.length; ffi++) {
+        var ff = formForms[ffi];
+        parts.push(
+          '<div class="boxedin-rt__item">' +
+          '<span class="boxedin-rt__badge boxedin-rt__badge--info">Form</span> ' +
+          '<span class="boxedin-rt__item-label">' + escapeHtml(ff.method || "GET") +
+          ' \u2192 ' + escapeHtml((ff.action || "").slice(0, 100)) + '</span>');
+        if (ff.fields && ff.fields.length > 0) {
+          parts.push('<div class="boxedin-rt__item-detail">');
+          for (var fii = 0; fii < ff.fields.length; fii++) {
+            var field = ff.fields[fii];
+            parts.push(
+              '&lt;' + escapeHtml(field.tag || "input") + '&gt; ' +
+              'type=' + escapeHtml(field.type || "text") +
+              (field.name ? ' name="' + escapeHtml(field.name) + '"' : '') +
+              (field.autocomplete ? ' autocomplete="' + escapeHtml(field.autocomplete) + '"' : '') +
+              (field.required ? ' required' : '') + '<br>');
+          }
+          parts.push('</div>');
+        }
+        parts.push('</div>');
+      }
+      if (formStandalone.length > 0) {
+        parts.push(
+          '<div class="boxedin-rt__item">' +
+          '<span class="boxedin-rt__badge boxedin-rt__badge--info">Standalone</span> ' +
+          '<span class="boxedin-rt__item-label">' + formStandalone.length + ' input(s) outside any form</span>' +
+          '<div class="boxedin-rt__item-detail">');
+        for (var fsi = 0; fsi < formStandalone.length; fsi++) {
+          var sf = formStandalone[fsi];
+          parts.push(
+            'type=' + escapeHtml(sf.type || "text") +
+            (sf.name ? ' name="' + escapeHtml(sf.name) + '"' : '') +
+            (sf.autocomplete ? ' autocomplete="' + escapeHtml(sf.autocomplete) + '"' : '') + '<br>');
+        }
+        parts.push('</div></div>');
+      }
+    } else {
+      parts.push('<p class="boxedin-rt__none">No forms or input fields found.</p>');
+    }
+    parts.push('</div>');
+
     return parts.join("");
   }
 
@@ -1306,13 +1497,45 @@
     try {
       chrome.runtime.sendMessage({ type: "BOXEDIN_GET_INJECT_FINDINGS" }, function (response) {
         if (chrome.runtime.lastError) {
-          if (activeTab === "inject") renderShell(buildInjectBody(null));
+          if (activeTab === "inject") {
+            renderShell(buildInjectBody(null));
+            wireInjectPanel();
+          }
           return;
         }
-        if (activeTab === "inject") renderShell(buildInjectBody(response));
+        if (activeTab === "inject") {
+          renderShell(buildInjectBody(response));
+          wireInjectPanel();
+        }
       });
     } catch (e) {
-      if (activeTab === "inject") renderShell(buildInjectBody(null));
+      if (activeTab === "inject") {
+        renderShell(buildInjectBody(null));
+        wireInjectPanel();
+      }
+    }
+  }
+
+  function wireInjectPanel() {
+    var corsBtn = root.querySelector(".boxedin-rt__probe-cors-btn");
+    if (corsBtn) {
+      corsBtn.addEventListener("click", function () {
+        corsBtn.disabled = true;
+        corsBtn.textContent = "Testing\u2026";
+        var origin = window.location.origin;
+        try {
+          chrome.runtime.sendMessage({ type: "BOXEDIN_PROBE_CORS", origin: origin }, function (response) {
+            if (chrome.runtime.lastError) {
+              corsBtn.textContent = "Error";
+              return;
+            }
+            cachedCorsProbe = (response && response.result) || { error: "No response" };
+            if (activeTab === "inject") fetchInjectAndRender();
+          });
+        } catch (e) {
+          corsBtn.textContent = "Error";
+        }
+      });
     }
   }
 
@@ -1326,55 +1549,149 @@
     if (!redteamEnabled) {
       return '<p class="boxedin-rt__disabled">Enable red-team tools in the BoxedIn options page.</p>';
     }
-    if (!findings || findings.length === 0) {
-      return '<p class="boxedin-rt__none">No tech-stack findings yet. Navigate to a site and reload to scan.</p>';
-    }
-
-    var groups = { cms: [], framework: [], analytics: [], server: [] };
-    for (var i = 0; i < findings.length; i++) {
-      var f = findings[i];
-      var cat = f.category || "server";
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(f);
-    }
-
-    var groupMeta = [
-      { key: "cms", label: "CMS" },
-      { key: "framework", label: "Frameworks" },
-      { key: "analytics", label: "Analytics" },
-      { key: "server", label: "Server" }
-    ];
 
     var parts = [];
-    for (var g = 0; g < groupMeta.length; g++) {
-      var gm = groupMeta[g];
-      var items = groups[gm.key];
-      if (!items || items.length === 0) continue;
+    var hasContent = false;
 
+    if (cachedSubdomains.length > 0) {
+      hasContent = true;
       parts.push(
-        '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">' +
-        escapeHtml(gm.label) +
-        '<span class="boxedin-rt__recon-count">' + items.length + '</span>' +
-        '</div>');
+        '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Subdomains' +
+        '<span class="boxedin-rt__recon-count">' + cachedSubdomains.length + '</span></div>');
+      parts.push('<p class="boxedin-rt__osint-hint">Subdomains of ' + escapeHtml(cachedBaseDomain) + ' found in page resources.</p>');
+      for (var sdi = 0; sdi < cachedSubdomains.length; sdi++) {
+        parts.push(
+          '<div class="boxedin-rt__item"><span class="boxedin-rt__item-label">' +
+          escapeHtml(cachedSubdomains[sdi]) + '</span></div>');
+      }
+      parts.push('</div>');
+    }
 
-      for (var j = 0; j < items.length; j++) {
-        var item = items[j];
-        var nameStr = escapeHtml(item.name || "Unknown");
-        if (item.version) nameStr += ' <span class="boxedin-rt__recon-version">' + escapeHtml(item.version) + '</span>';
-
+    if (cachedSourceMaps.length > 0) {
+      hasContent = true;
+      parts.push(
+        '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Source Maps' +
+        '<span class="boxedin-rt__recon-count">' + cachedSourceMaps.length + '</span></div>');
+      parts.push('<p class="boxedin-rt__osint-hint">Source maps expose original source code in production.</p>');
+      for (var smi = 0; smi < cachedSourceMaps.length; smi++) {
+        var sm = cachedSourceMaps[smi];
         parts.push(
           '<div class="boxedin-rt__item">' +
-          '<span class="boxedin-rt__item-label">' + nameStr + '</span>' +
-          '<span class="boxedin-rt__recon-evidence">' + escapeHtml(item.evidence || "") + '</span>');
+          '<span class="boxedin-rt__badge boxedin-rt__badge--warning">Warning</span> ' +
+          '<span class="boxedin-rt__item-label">' + escapeHtml(sm.type) + '</span>' +
+          '<div class="boxedin-rt__item-detail">' + escapeHtml(sm.url || "") + '</div></div>');
+      }
+      parts.push('</div>');
+    }
 
-        if (item.attackNotes) {
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Sensitive Paths</div>');
+    if (cachedProbeResults) {
+      var found = cachedProbeResults.filter(function (r) { return r.found; });
+      if (found.length === 0) {
+        parts.push('<p class="boxedin-rt__none">No sensitive paths found (' + cachedProbeResults.length + ' paths probed).</p>');
+      } else {
+        for (var pri = 0; pri < found.length; pri++) {
+          var pr = found[pri];
+          var prSev = pr.risk === "critical" ? "critical" : pr.risk === "high" ? "critical" : pr.risk === "medium" ? "warning" : "info";
+          var prSevLabel = pr.risk.charAt(0).toUpperCase() + pr.risk.slice(1);
           parts.push(
-            '<div class="boxedin-rt__item-detail">' + escapeHtml(item.attackNotes) + '</div>');
+            '<div class="boxedin-rt__item">' +
+            '<span class="boxedin-rt__badge boxedin-rt__badge--' + prSev + '">' + prSevLabel + '</span> ' +
+            '<span class="boxedin-rt__item-label">' + escapeHtml(pr.path) + ' (' + pr.status + ')</span>' +
+            '<button type="button" class="boxedin-rt__probe-view-btn" data-path="' + escapeAttr(pr.path) + '" title="Fetch and view contents">\u{1F441}</button>' +
+            '<div class="boxedin-rt__item-detail">' + escapeHtml(pr.desc) + '</div>' +
+            '<div class="boxedin-rt__probe-content" data-for="' + escapeAttr(pr.path) + '"></div>' +
+            '</div>');
         }
-        parts.push('</div>');
+      }
+      parts.push('<button type="button" class="boxedin-rt__probe-paths-btn">Re-probe</button>');
+    } else {
+      parts.push(
+        '<p class="boxedin-rt__osint-hint">Probe common paths for exposed files and endpoints.</p>' +
+        '<button type="button" class="boxedin-rt__probe-paths-btn">Probe Paths</button>');
+    }
+    parts.push('<div class="boxedin-rt__probe-results"></div></div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">DNS Security Audit</div>');
+    if (cachedDnsFindings) {
+      var dnsCounts = { critical: 0, high: 0, medium: 0, info: 0 };
+      var dnsSummaryParts = [];
+      for (var dfi = 0; dfi < cachedDnsFindings.length; dfi++) {
+        var df = cachedDnsFindings[dfi];
+        dnsCounts[df.risk] = (dnsCounts[df.risk] || 0) + 1;
+        var dfBadge = df.risk === "critical" ? "critical" : df.risk === "high" ? "critical" : df.risk === "medium" ? "warning" : "info";
+        var dfLabel = df.risk.charAt(0).toUpperCase() + df.risk.slice(1);
+        parts.push(
+          '<div class="boxedin-rt__item">' +
+          '<span class="boxedin-rt__badge boxedin-rt__badge--' + dfBadge + '">' + dfLabel + '</span> ' +
+          '<span class="boxedin-rt__dns-check">[' + escapeHtml(df.check) + ']</span> ' +
+          '<span class="boxedin-rt__item-label">' + escapeHtml(df.title) + '</span>' +
+          '<div class="boxedin-rt__item-detail">' + escapeHtml(df.detail || "") + '</div></div>');
+      }
+      if (dnsCounts.critical) dnsSummaryParts.push(dnsCounts.critical + " Critical");
+      if (dnsCounts.high) dnsSummaryParts.push(dnsCounts.high + " High");
+      if (dnsCounts.medium) dnsSummaryParts.push(dnsCounts.medium + " Medium");
+      if (dnsCounts.info) dnsSummaryParts.push(dnsCounts.info + " Info");
+      parts.push('<p class="boxedin-rt__osint-hint"><strong>' + escapeHtml(cachedDnsDomain) + '</strong> \u2014 ' + dnsSummaryParts.join(", ") + '</p>');
+      parts.push('<button type="button" class="boxedin-rt__dns-audit-btn">Re-run DNS Audit</button>');
+    } else {
+      parts.push(
+        '<p class="boxedin-rt__osint-hint">Check SPF, DKIM, DMARC, DNSSEC, CAA, MX, and NS records via DNS-over-HTTPS (dns.google).</p>' +
+        '<button type="button" class="boxedin-rt__dns-audit-btn">Run DNS Audit</button>');
+    }
+    parts.push('<div class="boxedin-rt__dns-results"></div></div>');
+
+    if (findings && findings.length > 0) {
+      hasContent = true;
+      var groups = { cms: [], framework: [], analytics: [], server: [] };
+      for (var i = 0; i < findings.length; i++) {
+        var f = findings[i];
+        var cat = f.category || "server";
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(f);
       }
 
-      parts.push('</div>');
+      var groupMeta = [
+        { key: "cms", label: "CMS" },
+        { key: "framework", label: "Frameworks" },
+        { key: "analytics", label: "Analytics" },
+        { key: "server", label: "Server" }
+      ];
+
+      for (var g = 0; g < groupMeta.length; g++) {
+        var gm = groupMeta[g];
+        var items = groups[gm.key];
+        if (!items || items.length === 0) continue;
+
+        parts.push(
+          '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">' +
+          escapeHtml(gm.label) +
+          '<span class="boxedin-rt__recon-count">' + items.length + '</span>' +
+          '</div>');
+
+        for (var j = 0; j < items.length; j++) {
+          var item = items[j];
+          var nameStr = escapeHtml(item.name || "Unknown");
+          if (item.version) nameStr += ' <span class="boxedin-rt__recon-version">' + escapeHtml(item.version) + '</span>';
+
+          parts.push(
+            '<div class="boxedin-rt__item">' +
+            '<span class="boxedin-rt__item-label">' + nameStr + '</span>' +
+            '<span class="boxedin-rt__recon-evidence">' + escapeHtml(item.evidence || "") + '</span>');
+
+          if (item.attackNotes) {
+            parts.push(
+              '<div class="boxedin-rt__item-detail">' + escapeHtml(item.attackNotes) + '</div>');
+          }
+          parts.push('</div>');
+        }
+
+        parts.push('</div>');
+      }
+    }
+
+    if (!hasContent && (!findings || findings.length === 0)) {
+      parts.unshift('<p class="boxedin-rt__none">No tech-stack findings yet. Navigate to a site and reload to scan.</p>');
     }
 
     return parts.join("");
@@ -1385,14 +1702,109 @@
     try {
       chrome.runtime.sendMessage({ type: "BOXEDIN_GET_TECH_FINDINGS" }, function (response) {
         if (chrome.runtime.lastError) {
-          if (activeTab === "recon") renderShell(buildReconBody([]));
+          if (activeTab === "recon") {
+            renderShell(buildReconBody([]));
+            wireReconPanel();
+          }
           return;
         }
         var findings = (response && response.findings) || [];
-        if (activeTab === "recon") renderShell(buildReconBody(findings));
+        if (activeTab === "recon") {
+          renderShell(buildReconBody(findings));
+          wireReconPanel();
+        }
       });
     } catch (e) {
-      if (activeTab === "recon") renderShell(buildReconBody([]));
+      if (activeTab === "recon") {
+        renderShell(buildReconBody([]));
+        wireReconPanel();
+      }
+    }
+  }
+
+  function wireReconPanel() {
+    var probeBtn = root.querySelector(".boxedin-rt__probe-paths-btn");
+    if (probeBtn) {
+      probeBtn.addEventListener("click", function () {
+        probeBtn.disabled = true;
+        probeBtn.textContent = "Probing\u2026";
+        var origin = window.location.origin;
+        try {
+          chrome.runtime.sendMessage({ type: "BOXEDIN_PROBE_PATHS", origin: origin }, function (response) {
+            if (chrome.runtime.lastError) {
+              probeBtn.textContent = "Error";
+              return;
+            }
+            cachedProbeResults = (response && response.results) || [];
+            if (activeTab === "recon") fetchReconAndRender();
+          });
+        } catch (e) {
+          probeBtn.textContent = "Error";
+        }
+      });
+    }
+
+    var viewBtns = root.querySelectorAll(".boxedin-rt__probe-view-btn");
+    for (var vi = 0; vi < viewBtns.length; vi++) {
+      (function (btn) {
+        btn.addEventListener("click", function () {
+          var path = btn.getAttribute("data-path");
+          if (!path) return;
+          var contentEl = root.querySelector('.boxedin-rt__probe-content[data-for="' + path.replace(/"/g, '\\"') + '"]');
+          if (!contentEl) return;
+          if (contentEl.style.display === "block") {
+            contentEl.style.display = "none";
+            return;
+          }
+          if (contentEl.getAttribute("data-loaded")) {
+            contentEl.style.display = "block";
+            return;
+          }
+          contentEl.innerHTML = '<p class="boxedin-rt__none">Fetching\u2026</p>';
+          contentEl.style.display = "block";
+          var url = window.location.origin + path;
+          try {
+            chrome.runtime.sendMessage({ type: "BOXEDIN_FETCH_PATH_CONTENT", url: url }, function (response) {
+              if (chrome.runtime.lastError || !response) {
+                contentEl.innerHTML = '<p class="boxedin-rt__none">Failed to fetch.</p>';
+                return;
+              }
+              contentEl.setAttribute("data-loaded", "1");
+              var ct = response.contentType || "";
+              var body = response.body || "";
+              var headerHtml = '<div class="boxedin-rt__probe-content-meta">HTTP ' +
+                (response.status || "?") + ' | ' + escapeHtml(ct.split(";")[0]) +
+                ' | ' + body.length + ' bytes</div>';
+              contentEl.innerHTML = headerHtml +
+                '<pre class="boxedin-rt__probe-content-body">' + escapeHtml(body) + '</pre>';
+            });
+          } catch (e) {
+            contentEl.innerHTML = '<p class="boxedin-rt__none">Error.</p>';
+          }
+        });
+      })(viewBtns[vi]);
+    }
+
+    var dnsBtn = root.querySelector(".boxedin-rt__dns-audit-btn");
+    if (dnsBtn) {
+      dnsBtn.addEventListener("click", function () {
+        dnsBtn.disabled = true;
+        dnsBtn.textContent = "Querying DNS\u2026";
+        var domain = window.location.hostname;
+        try {
+          chrome.runtime.sendMessage({ type: "BOXEDIN_DNS_AUDIT", domain: domain }, function (response) {
+            if (chrome.runtime.lastError) {
+              dnsBtn.textContent = "Error";
+              return;
+            }
+            cachedDnsFindings = (response && response.findings) || [];
+            cachedDnsDomain = (response && response.domain) || domain;
+            if (activeTab === "recon") fetchReconAndRender();
+          });
+        } catch (e) {
+          dnsBtn.textContent = "Error";
+        }
+      });
     }
   }
 
@@ -1507,6 +1919,154 @@
       });
     } catch (e) {
       if (activeTab === "apis") renderShell(buildApisBody([], []));
+    }
+  }
+
+  /* ── Deps panel ──────────────────────────────────────────────────── */
+
+  function buildDepsBody(findings) {
+    if (!redteamEnabled) {
+      return '<p class="boxedin-rt__disabled">Enable red-team tools in the BoxedIn options page.</p>';
+    }
+    if (!findings || findings.length === 0) {
+      return '<p class="boxedin-rt__none">No dependencies detected yet. Navigate to a site and reload to scan.</p>';
+    }
+
+    var thirdParty = [];
+    var firstParty = [];
+    for (var i = 0; i < findings.length; i++) {
+      if (findings[i].thirdParty) thirdParty.push(findings[i]);
+      else firstParty.push(findings[i]);
+    }
+
+    var noSri = thirdParty.filter(function (d) { return !d.sri; });
+    var parts = [];
+
+    if (noSri.length > 0) {
+      parts.push(
+        '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">' +
+        '<span class="boxedin-rt__badge boxedin-rt__badge--warning">Warning</span> ' +
+        'Third-Party Without SRI<span class="boxedin-rt__recon-count">' + noSri.length + '</span></div>');
+      parts.push('<p class="boxedin-rt__osint-hint">Third-party scripts/styles loaded without Subresource Integrity. Vulnerable to supply chain attacks if the CDN is compromised.</p>');
+      for (var ni = 0; ni < noSri.length; ni++) {
+        var ns = noSri[ni];
+        parts.push(
+          '<div class="boxedin-rt__item">' +
+          '<span class="boxedin-rt__badge boxedin-rt__badge--warning">' + escapeHtml(ns.type) + '</span> ' +
+          '<span class="boxedin-rt__item-label">' + escapeHtml(ns.host) + '</span>' +
+          '<div class="boxedin-rt__item-detail">' + escapeHtml((ns.url || "").slice(0, 150)) + '</div></div>');
+      }
+      parts.push('</div>');
+    }
+
+    if (thirdParty.length > 0) {
+      parts.push(
+        '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">' +
+        'Third-Party Dependencies<span class="boxedin-rt__recon-count">' + thirdParty.length + '</span></div>');
+      for (var ti = 0; ti < thirdParty.length; ti++) {
+        var tp = thirdParty[ti];
+        var sriLabel = tp.sri ? '<span class="boxedin-rt__badge boxedin-rt__badge--info">SRI</span> ' : '';
+        parts.push(
+          '<div class="boxedin-rt__item">' + sriLabel +
+          '<span class="boxedin-rt__badge boxedin-rt__badge--' + (tp.type === "script" ? "warning" : "info") + '">' +
+          escapeHtml(tp.type) + '</span> ' +
+          '<span class="boxedin-rt__item-label">' + escapeHtml(tp.host) + '</span>' +
+          '<div class="boxedin-rt__item-detail">' + escapeHtml((tp.url || "").slice(0, 150)) +
+          (tp.async ? ' async' : '') + (tp.defer ? ' defer' : '') + '</div></div>');
+      }
+      parts.push('</div>');
+    }
+
+    if (firstParty.length > 0) {
+      parts.push(
+        '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">' +
+        'First-Party Resources<span class="boxedin-rt__recon-count">' + firstParty.length + '</span></div>');
+      for (var fpi = 0; fpi < firstParty.length; fpi++) {
+        var fp = firstParty[fpi];
+        parts.push(
+          '<div class="boxedin-rt__item">' +
+          '<span class="boxedin-rt__badge boxedin-rt__badge--info">' + escapeHtml(fp.type) + '</span> ' +
+          '<span class="boxedin-rt__item-label">' + escapeHtml((fp.url || "").slice(0, 150)) + '</span></div>');
+      }
+      parts.push('</div>');
+    }
+
+    return parts.join("");
+  }
+
+  function fetchDepsAndRender() {
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_GET_DEPS_FINDINGS" }, function (response) {
+        if (chrome.runtime.lastError) {
+          if (activeTab === "deps") renderShell(buildDepsBody([]));
+          return;
+        }
+        var findings = (response && response.findings) || [];
+        if (activeTab === "deps") renderShell(buildDepsBody(findings));
+      });
+    } catch (e) {
+      if (activeTab === "deps") renderShell(buildDepsBody([]));
+    }
+  }
+
+  /* ── Timeline panel ────────────────────────────────────────────────── */
+
+  function buildTimelineBody(events) {
+    if (!redteamEnabled) {
+      return '<p class="boxedin-rt__disabled">Enable red-team tools in the BoxedIn options page.</p>';
+    }
+    if (!events || events.length === 0) {
+      return '<p class="boxedin-rt__none">No network events recorded yet. Navigate to a site and interact to capture activity.</p>';
+    }
+
+    var parts = [];
+    parts.push(
+      '<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Request Flow' +
+      '<span class="boxedin-rt__recon-count">' + events.length + ' events</span></div>');
+
+    var firstTs = events[0].ts || 0;
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      var elapsed = firstTs ? ((ev.ts || 0) - firstTs) : 0;
+      var elapsedStr = elapsed >= 0 ? "+" + (elapsed / 1000).toFixed(2) + "s" : "";
+      var timeStr = formatTime(ev.ts);
+      var typeCls = "info";
+      if (ev.type === "fetch" || ev.type === "xhr") typeCls = "warning";
+      else if (ev.type === "websocket") typeCls = "critical";
+      else if (ev.type === "form-submit") typeCls = "critical";
+      else if (ev.type === "clipboard-write" || ev.type === "clipboard-read") typeCls = "critical";
+
+      parts.push(
+        '<div class="boxedin-rt__item boxedin-rt__timeline-item">' +
+        '<span class="boxedin-rt__timeline-time">' + escapeHtml(timeStr) + '</span>' +
+        '<span class="boxedin-rt__timeline-elapsed">' + escapeHtml(elapsedStr) + '</span>' +
+        '<span class="boxedin-rt__badge boxedin-rt__badge--' + typeCls + '">' + escapeHtml(ev.type || "?") + '</span> ');
+
+      if (ev.method && ev.method !== "GET") {
+        parts.push('<span class="boxedin-rt__method-badge">' + escapeHtml(ev.method) + '</span> ');
+      }
+
+      parts.push(
+        '<span class="boxedin-rt__item-label">' + escapeHtml((ev.url || "").slice(0, 120)) + '</span>' +
+        '</div>');
+    }
+
+    parts.push('</div>');
+    return parts.join("");
+  }
+
+  function fetchTimelineAndRender() {
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_GET_TIMELINE" }, function (response) {
+        if (chrome.runtime.lastError) {
+          if (activeTab === "timeline") renderShell(buildTimelineBody([]));
+          return;
+        }
+        var events = (response && response.events) || [];
+        if (activeTab === "timeline") renderShell(buildTimelineBody(events));
+      });
+    } catch (e) {
+      if (activeTab === "timeline") renderShell(buildTimelineBody([]));
     }
   }
 
@@ -1799,6 +2359,31 @@
 
     parts.push('</div>');
 
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">SecurityTrails — DNS History &amp; Intelligence</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Historical DNS records, WHOIS changes, associated domains, subdomains, and hosting history. Free tier available.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-securitytrails-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">View DNS History</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-securitytrails-input" placeholder="example.com" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-securitytrails-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
     renderShell(parts.join(""));
     wireOsintPanel();
   }
@@ -2054,6 +2639,29 @@
           e.preventDefault();
           var val = chManualInput.value.trim();
           if (val) openCompaniesHouseSearch(val);
+        }
+      });
+    }
+
+    var stBtn = root.querySelector(".boxedin-rt__osint-securitytrails-btn");
+    if (stBtn) {
+      stBtn.addEventListener("click", function () {
+        openSecurityTrailsSearch(stBtn.getAttribute("data-domain"));
+      });
+    }
+
+    var stManualBtn = root.querySelector(".boxedin-rt__osint-securitytrails-manual-btn");
+    var stManualInput = root.querySelector(".boxedin-rt__osint-securitytrails-input");
+    if (stManualBtn && stManualInput) {
+      stManualBtn.addEventListener("click", function () {
+        var val = stManualInput.value.trim();
+        if (val) openSecurityTrailsSearch(val);
+      });
+      stManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = stManualInput.value.trim();
+          if (val) openSecurityTrailsSearch(val);
         }
       });
     }
@@ -2363,7 +2971,7 @@
 
       if (redteamEnabled) {
         var savedTab = items[STORAGE_ACTIVE_TAB];
-        if (savedTab === "auth" || savedTab === "exfil" || savedTab === "inject" || savedTab === "recon" || savedTab === "apis" || savedTab === "osint") {
+        if (savedTab === "auth" || savedTab === "exfil" || savedTab === "inject" || savedTab === "recon" || savedTab === "apis" || savedTab === "deps" || savedTab === "timeline" || savedTab === "osint") {
           activeTab = savedTab;
         }
         enablePageGuardRedteam();

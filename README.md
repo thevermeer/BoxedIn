@@ -145,6 +145,7 @@ Audits authentication and session security with findings grouped by severity (Cr
 - Authorization headers sent over plain HTTP.
 - Session-like cookies (`session`, `token`, `auth`, `sid`, `jwt` in name) missing `HttpOnly`.
 - JWT tokens or API key patterns (`sk-`, `AKIA`, `ghp_`, etc.) found in `localStorage` or `sessionStorage`.
+- Exposed secrets in inline scripts and meta tags — scans for 17 secret patterns including AWS access/secret keys, Google API keys, Google OAuth client IDs, Stripe keys, Slack tokens/webhooks, GitHub tokens/PATs, private keys (RSA/EC/DSA/OPENSSH), Mailgun keys, Twilio keys, SendGrid keys, Firebase keys, Heroku API keys, and generic bearer tokens.
 
 **Warning findings:**
 
@@ -160,7 +161,7 @@ Audits authentication and session security with findings grouped by severity (Cr
 - Token type classification (JWT, Basic, Bearer) per observed `Authorization` header.
 - Cookie inventory with flag summary.
 
-Data sources: `chrome.cookies.getAll()` for the current URL, `webRequest.onBeforeSendHeaders` for request headers, `webRequest.onHeadersReceived` for response headers, and page-guard `scanStorage()` for client-side token detection.
+Data sources: `chrome.cookies.getAll()` for the current URL, `webRequest.onBeforeSendHeaders` for request headers, `webRequest.onHeadersReceived` for response headers, page-guard `scanStorage()` for client-side token detection, and page-guard `scanExposedSecrets()` for secret pattern scanning in DOM content.
 
 ### Exfil Tab
 
@@ -182,7 +183,7 @@ Monitors data exfiltration vectors in real time with a reverse-chronological eve
 
 ### Inject Tab
 
-Maps the injection attack surface with four analysis sections:
+Maps the injection attack surface with eight analysis sections:
 
 **CSP Analysis:**
 
@@ -192,7 +193,7 @@ Maps the injection attack surface with four analysis sections:
 - Flags report-only CSP (not enforced).
 - Displays full directive table for manual review.
 
-**CORS Analysis:**
+**CORS Analysis (passive):**
 
 - Flags `Access-Control-Allow-Origin: *` (any origin).
 - Flags `Access-Control-Allow-Credentials: true` with permissive origin.
@@ -208,9 +209,63 @@ Maps the injection attack surface with four analysis sections:
 - Monitors all `eval()` calls.
 - Flags reflected query parameters and URL fragments found verbatim in `document.body.innerHTML`.
 
+**Open Redirects:**
+
+- Scans URL query parameters for redirect-like names (`redirect`, `next`, `url`, `return`, `returnUrl`, `returnTo`, `goto`, `destination`, `target`, `continue`, `redir`, `forward`, `out`, `link`, `to`).
+- Flags parameters whose values start with `http://`, `https://`, `//`, or `/` — indicating potential open redirect vectors.
+
+**Mixed Content:**
+
+- On HTTPS pages, scans all resource-loading elements (`<script>`, `<img>`, `<link>`, `<iframe>`, `<video>`, `<source>`, `<audio>`, `<object>`, `<embed>`) for HTTP URLs.
+- Each insecure resource is listed with its tag type and URL.
+
+**CORS Probe (active):**
+
+- A "Test CORS" button sends a fetch from the service worker with `Origin: https://evil-cors-test.example.com` and inspects the response for `Access-Control-Allow-Origin` reflection. Reports whether the server is vulnerable to arbitrary-origin CORS, including wildcard, origin reflection, or `null` ACAO values, with credential escalation noted.
+
+**Form Surface:**
+
+- Enumerates all `<form>` elements on the page with their action URL, method, and fields. For each visible input field, shows the tag, type, name, autocomplete attribute, required status, and pattern constraint.
+- Lists standalone inputs (outside any `<form>` tag) separately.
+- Useful for mapping the application's input surface, identifying autocomplete risks (e.g., `autocomplete="off"` on password fields), and understanding the data the page collects.
+
 ### Recon Tab
 
-Performs passive tech-stack fingerprinting to identify the site's CMS, JavaScript frameworks, analytics services, and server software. Findings are grouped by category with detection evidence and attack-surface notes. Where possible, version numbers are extracted automatically.
+Performs passive tech-stack fingerprinting, subdomain enumeration, source map detection, and sensitive path probing. Findings are grouped by category with detection evidence and attack-surface notes.
+
+**Subdomains:**
+
+- Scans all resource-loading elements (`<a>`, `<link>`, `<script>`, `<img>`, `<iframe>`, etc.) and inline script URL references for hostnames that are subdomains of the current page's base domain.
+- Lists each discovered subdomain for further investigation.
+
+**Source Maps:**
+
+- Scans `<script>` elements for `//# sourceMappingURL=` comments, `.map` file references in script src attributes, and `<link rel="sourcemap">` elements.
+- Source maps in production expose original source code — a significant information leak.
+
+**Sensitive Paths:**
+
+- A "Probe Paths" button sends HEAD requests from the service worker to 30 common paths (`/.env`, `/.git/HEAD`, `/robots.txt`, `/sitemap.xml`, `/.well-known/security.txt`, `/wp-admin/`, `/graphql`, `/swagger.json`, `/openapi.json`, `/api-docs`, `/phpinfo.php`, `/server-status`, `/actuator`, and more).
+- Results are categorized by risk level (Critical, High, Medium, Info) and only found paths (HTTP 2xx/3xx) are displayed.
+
+**DNS Security Audit:**
+
+A "Run DNS Audit" button queries public DNS-over-HTTPS (dns.google) to analyse the domain's DNS configuration. Checks performed:
+
+- **SPF** — Detects missing SPF records (Critical), overly permissive `+all`/`?all` mechanisms (Critical/High), softfail `~all` (Medium), and excessive DNS lookups nearing the 10-lookup limit.
+- **DMARC** — Detects missing `_dmarc` TXT records (Critical), monitoring-only `p=none` policy (High), missing aggregate report address `rua=` (Medium), and verifies `p=quarantine` or `p=reject` enforcement.
+- **DKIM** — Probes 9 common DKIM selectors (`default._domainkey`, `google._domainkey`, `k1._domainkey`, `selector1._domainkey`, `selector2._domainkey`, `s1._domainkey`, `s2._domainkey`, `dkim._domainkey`, `mail._domainkey`) for DKIM1 records.
+- **DNSSEC** — Checks for DNSKEY records and the AD (Authenticated Data) flag indicating DNSSEC validation.
+- **CAA** — Detects missing Certificate Authority Authorization records (any CA can issue certs) and lists authorized issuers when present.
+- **MX** — Inventories mail servers and identifies the mail provider (Google Workspace, Microsoft 365, ProtonMail, Mimecast, Proofpoint, etc.).
+- **NS** — Lists nameservers and flags single-provider risk (all NS at one registrar).
+- **CNAME** — Checks `www.<domain>` for CNAME targets (useful for identifying hosting/CDN providers and potential dangling CNAME takeover).
+
+Results are sorted by severity (Critical > High > Medium > Info) with a summary count line.
+
+**Tech-stack fingerprinting:**
+
+Identifies the site's CMS, JavaScript frameworks, analytics services, and server software. Where possible, version numbers are extracted automatically.
 
 **Detection methods (7 layers):**
 
@@ -253,11 +308,47 @@ Enumerates API endpoints discovered in the page through five complementary detec
 
 **Data flow:** page-guard emits findings via `postMessage` with `type: "api"`. The overlay forwards them to the background via `BOXEDIN_STORE_API_FINDING` (deduplicated by URL, capped at 200 per tab). The APIs panel fetches both static findings and runtime API URLs via `BOXEDIN_GET_API_FINDINGS`.
 
+### Deps Tab
+
+Analyses the page's external dependencies for supply chain risks.
+
+- **Third-party without SRI** — lists all third-party `<script>` and `<link rel="stylesheet">` elements that lack a `integrity` attribute. These are vulnerable to supply chain attacks if the hosting CDN is compromised.
+- **Third-party dependencies** — full inventory of all third-party scripts and stylesheets, showing the host, URL, SRI status, and whether `async`/`defer` attributes are set.
+- **First-party resources** — lists same-origin scripts and stylesheets for completeness.
+
+**Data flow:** page-guard's `scanDependencies()` enumerates all `<script src>` and `<link rel="stylesheet" href>` elements, classifies each as first-party or third-party, and checks for SRI attributes. Findings are forwarded to the background via `BOXEDIN_STORE_DEPS_FINDING` (capped at 200 per tab).
+
+### Timeline Tab
+
+Provides a chronological view of all network and data-flow events captured during the page session.
+
+- Merges exfiltration events (fetch, XHR, clipboard, WebSocket, form submit) with any additional timeline events, sorted by timestamp.
+- Each row shows the wall-clock time, relative offset from the first event, event type badge (color-coded by severity), HTTP method (if applicable), and URL.
+- Useful for understanding authentication flows, request sequencing, and identifying unexpected network activity.
+
+**Data flow:** the timeline merges events from `exfilEventsByTab` and `timelineEventsByTab` in the background, sorted chronologically, and returns them via `BOXEDIN_GET_TIMELINE`.
+
+### Export Button
+
+A download arrow (⬇) button in the overlay header (visible when red-team mode is enabled) exports all in-memory findings for the current tab as a structured JSON report. The report includes:
+
+- Auth findings (request headers, cookies, security headers, page-guard storage/secret scans)
+- Exfiltration events
+- Injection findings (CSP, CORS, CSRF, XSS, open redirects, mixed content, form inventory)
+- Tech-stack findings
+- API endpoints
+- Dependencies (with SRI status)
+- Timeline events
+- Subdomain and source map discoveries
+- A **severity summary** counting Critical, High, Medium, Low, and Info findings
+
+The file is named `boxedin-report-YYYY-MM-DD.json`.
+
 ### OSINT Tab
 
-Integrates with eleven public OSINT search engines — **crt.sh**, **Shodan**, **WHOIS**, the **Wayback Machine**, **Intelligence X**, **urlscan.io**, **Censys**, **Domain Dossier**, **PhishTank**, **FOFA**, and **Companies House** — to perform external reconnaissance on domains and hosts. Searches open in a new browser tab; no API keys or accounts are required for basic lookups.
+Integrates with twelve public OSINT search engines — **crt.sh**, **Shodan**, **WHOIS**, the **Wayback Machine**, **Intelligence X**, **urlscan.io**, **Censys**, **Domain Dossier**, **PhishTank**, **FOFA**, **Companies House**, and **SecurityTrails** — to perform external reconnaissance on domains and hosts. Searches open in a new browser tab; no API keys or accounts are required for basic lookups.
 
-The OSINT panel is divided into eleven sections:
+The OSINT panel is divided into twelve sections:
 
 **crt.sh — Certificate Transparency**
 
@@ -325,6 +416,12 @@ The OSINT panel is divided into eleven sections:
 - **Manual query input** — a text field for searching by company name or domain.
 - Companies House is the official UK government registry of companies. Useful for identifying the legal entity behind a domain, finding director names, registered addresses, filing history, and accounts — key data for social engineering assessments and target profiling.
 
+**SecurityTrails — DNS History & Intelligence**
+
+- **One-click search** — the current page's domain is shown with a "View DNS History" button that opens `https://securitytrails.com/domain/<domain>/dns` in a new tab.
+- **Manual domain input** — a text field for searching arbitrary domains.
+- SecurityTrails provides historical DNS records, WHOIS changes, associated domains, subdomain enumeration, and hosting history. The free tier allows limited lookups. Useful for tracking infrastructure changes, discovering related domains, finding previous IP addresses, and identifying hosting patterns over time. Complements the built-in DNS Security Audit with historical perspective.
+
 In addition to the dedicated tab, search icons appear inline across other panels:
 
 - **Blocks panel** — a magnifying glass (crt.sh), globe (Shodan), document (WHOIS), hourglass (Wayback Machine), and detective (Intelligence X) icon next to each observed hostname in the hostname capture list (when red-team mode is enabled).
@@ -352,7 +449,7 @@ Open from the extension's context menu or `chrome://extensions` > BoxedIn > Deta
 - **Bundled rules** — a reference table of the 8 static DNR rules with IDs, patterns, purpose, and removal risk.
 - **Blocked hostnames** — lists every host blocked from the overlay, with per-host remove buttons and a "Clear all" action.
 - **Custom network block rules** — add, edit, or remove up to 50 `urlFilter` patterns. Patterns are validated on input and apply status is reported after the service worker processes them.
-- **Red-team tools** — a toggle to enable the Auth, Exfil, Inject, Recon, APIs, and OSINT tabs in the overlay. Off by default.
+- **Red-team tools** — a toggle to enable the Auth, Exfil, Inject, Recon, APIs, Deps, Timeline, and OSINT tabs in the overlay. Off by default.
 - **Exfiltration allowlist** — manage trusted hostnames that won't trigger third-party exfil alerts. The page's own origin is always allowed.
 - **Blocked cookies** — a persistent list of cookies that are automatically deleted whenever the browser tries to set them. Cookies blocked from the Auth tab in the overlay are added here automatically. Entries can also be added manually by specifying a cookie name and domain, or removed individually or cleared entirely. The service worker enforces the blocklist in real time via `chrome.cookies.onChanged`.
 - **Export findings** — downloads all stored data (settings, stats, findings) as a timestamped JSON file (`boxedin-findings-YYYY-MM-DD.json`).
@@ -364,7 +461,7 @@ Open from the extension's context menu or `chrome://extensions` > BoxedIn > Deta
 - `**manifest.json`** — Manifest V3 declaration: permissions, background service worker, content scripts, and DNR rulesets.
 - `**background.js**` — Service worker handling DNR rule management, `webRequest` listeners, per-tab in-memory data maps, header-based analysis, and request replay.
 - `**page-guard.js**` — MAIN-world content script injected at `document_start` in all frames. Patches browser APIs to block telemetry and collector URLs, and runs red-team DOM scans when enabled.
-- `**stats-overlay.js**` — Isolated-world content script injected at `document_idle` in the top frame. Renders the floating overlay with tabbed panels (Blocks, Auth, Exfil, Inject, Recon, APIs, OSINT) and the Request Repeater.
+- `**stats-overlay.js**` — Isolated-world content script injected at `document_idle` in the top frame. Renders the floating overlay with tabbed panels (Blocks, Auth, Exfil, Inject, Recon, APIs, Deps, Timeline, OSINT), the Request Repeater, and the export button.
 - `**stats-overlay.css**` — Styles for the overlay and repeater, with light/dark mode support and responsive layout.
 - `**rules.json**` — The 8 bundled static DNR block rules.
 - `**rules-ids.txt**` — Documents DNR rule ID ranges to prevent overlaps when editing.

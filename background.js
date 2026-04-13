@@ -45,6 +45,10 @@
   var MAX_TECH_FINDINGS_PER_TAB = 100;
   var apiFindingsByTab = new Map();
   var MAX_API_FINDINGS_PER_TAB = 200;
+  var depsFindingsByTab = new Map();
+  var MAX_DEPS_FINDINGS_PER_TAB = 200;
+  var timelineEventsByTab = new Map();
+  var MAX_TIMELINE_EVENTS_PER_TAB = 500;
   var MAX_EXFIL_EVENTS_PER_TAB = 200;
   var MAX_HEADER_FINDINGS_PER_TAB = 100;
 
@@ -1010,16 +1014,33 @@
       if (iFTid >= 0 && msg.finding) {
         var iFindings = injectFindingsByTab.get(iFTid);
         if (!iFindings) {
-          iFindings = { csp: null, cors: [], reflectedParams: [], xss: [], csrf: [] };
+          iFindings = { csp: null, cors: [], reflectedParams: [], xss: [], csrf: [], openRedirects: [], mixedContent: [], formInventory: null };
           injectFindingsByTab.set(iFTid, iFindings);
         }
-        var ft = msg.finding.type;
-        if (ft === "xss" && iFindings.xss && iFindings.xss.length < 50) {
-          iFindings.xss.push(msg.finding);
-        } else if (ft === "csrf" && iFindings.csrf && iFindings.csrf.length < 50) {
-          iFindings.csrf.push(msg.finding);
-        } else if (ft === "reflected" && iFindings.reflectedParams && iFindings.reflectedParams.length < 50) {
-          iFindings.reflectedParams.push(msg.finding);
+        var ft = msg.finding.type || msg.finding.subtype;
+        if (ft === "xss" || ft === "xss-sink") {
+          if (!iFindings.xss) iFindings.xss = [];
+          if (iFindings.xss.length < 50) iFindings.xss.push(msg.finding);
+        } else if (ft === "csrf" || ft === "csrf-missing") {
+          if (!iFindings.csrf) iFindings.csrf = [];
+          if (iFindings.csrf.length < 50) iFindings.csrf.push(msg.finding);
+        } else if (ft === "reflected" || ft === "reflected-param") {
+          if (!iFindings.reflectedParams) iFindings.reflectedParams = [];
+          if (iFindings.reflectedParams.length < 50) iFindings.reflectedParams.push(msg.finding);
+        } else if (ft === "open-redirect") {
+          if (!iFindings.openRedirects) iFindings.openRedirects = [];
+          var orFindings = msg.finding.findings || [];
+          for (var ori = 0; ori < orFindings.length && iFindings.openRedirects.length < 50; ori++) {
+            iFindings.openRedirects.push(orFindings[ori]);
+          }
+        } else if (ft === "mixed-content") {
+          if (!iFindings.mixedContent) iFindings.mixedContent = [];
+          var mcFindings = msg.finding.findings || [];
+          for (var mci = 0; mci < mcFindings.length && iFindings.mixedContent.length < 100; mci++) {
+            iFindings.mixedContent.push(mcFindings[mci]);
+          }
+        } else if (ft === "form-inventory") {
+          iFindings.formInventory = { forms: msg.finding.forms || [], standaloneInputs: msg.finding.standaloneInputs || [] };
         }
       }
       sendResponse({ ok: true });
@@ -1103,6 +1124,410 @@
       sendResponse({ findings: staticApis, exfilApis: exfilApis });
       return true;
     }
+    if (msg && msg.type === "BOXEDIN_STORE_DEPS_FINDING") {
+      var dpTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      if (dpTid >= 0 && msg.findings && Array.isArray(msg.findings)) {
+        var dFindings = depsFindingsByTab.get(dpTid);
+        if (!dFindings) {
+          dFindings = [];
+          depsFindingsByTab.set(dpTid, dFindings);
+        }
+        for (var dfi = 0; dfi < msg.findings.length && dFindings.length < MAX_DEPS_FINDINGS_PER_TAB; dfi++) {
+          dFindings.push(msg.findings[dfi]);
+        }
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_GET_DEPS_FINDINGS") {
+      var gdTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      sendResponse({ findings: depsFindingsByTab.get(gdTid) || [] });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_STORE_TIMELINE_EVENT") {
+      var tlTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      if (tlTid >= 0 && msg.event) {
+        var tlEvents = timelineEventsByTab.get(tlTid);
+        if (!tlEvents) {
+          tlEvents = [];
+          timelineEventsByTab.set(tlTid, tlEvents);
+        }
+        if (tlEvents.length < MAX_TIMELINE_EVENTS_PER_TAB) {
+          tlEvents.push(msg.event);
+        }
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_GET_TIMELINE") {
+      var gtlTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      var tlEvts = timelineEventsByTab.get(gtlTid) || [];
+      var exfilTl = exfilEventsByTab.get(gtlTid) || [];
+      var merged = [];
+      for (var tei = 0; tei < tlEvts.length; tei++) merged.push(tlEvts[tei]);
+      for (var xti = 0; xti < exfilTl.length; xti++) {
+        merged.push({
+          ts: exfilTl[xti].ts || 0,
+          type: exfilTl[xti].subtype || "network",
+          method: exfilTl[xti].method || "GET",
+          url: exfilTl[xti].url || "",
+          origin: "exfil"
+        });
+      }
+      merged.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+      sendResponse({ events: merged });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_FETCH_PATH_CONTENT") {
+      var fetchUrl = msg.url || "";
+      if (!fetchUrl) { sendResponse({ body: "", status: 0 }); return true; }
+      fetch(fetchUrl, { method: "GET", credentials: "omit", redirect: "follow" })
+        .then(function (resp) {
+          var ct = resp.headers.get("content-type") || "";
+          var status = resp.status;
+          return resp.text().then(function (text) {
+            var maxLen = 51200;
+            sendResponse({
+              body: text.length > maxLen ? text.slice(0, maxLen) + "\n\n--- truncated at " + maxLen + " bytes ---" : text,
+              status: status,
+              contentType: ct
+            });
+          });
+        })
+        .catch(function (err) {
+          sendResponse({ body: "Error: " + String(err).slice(0, 200), status: 0, contentType: "" });
+        });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_PROBE_PATHS") {
+      var ppOrigin = msg.origin || "";
+      if (!ppOrigin) { sendResponse({ results: [] }); return true; }
+      var probePaths = [
+        { path: "/.env", risk: "critical", desc: "Environment variables / secrets" },
+        { path: "/.git/HEAD", risk: "critical", desc: "Git repository exposed" },
+        { path: "/.git/config", risk: "critical", desc: "Git config exposed" },
+        { path: "/.svn/entries", risk: "high", desc: "SVN repository exposed" },
+        { path: "/robots.txt", risk: "info", desc: "Robots directives" },
+        { path: "/sitemap.xml", risk: "info", desc: "Sitemap index" },
+        { path: "/.well-known/security.txt", risk: "info", desc: "Security contact info" },
+        { path: "/security.txt", risk: "info", desc: "Security contact info (root)" },
+        { path: "/wp-admin/", risk: "medium", desc: "WordPress admin panel" },
+        { path: "/wp-login.php", risk: "medium", desc: "WordPress login" },
+        { path: "/administrator/", risk: "medium", desc: "Admin panel" },
+        { path: "/admin/", risk: "medium", desc: "Admin panel" },
+        { path: "/graphql", risk: "medium", desc: "GraphQL endpoint" },
+        { path: "/api/", risk: "info", desc: "API root" },
+        { path: "/swagger.json", risk: "high", desc: "Swagger/OpenAPI spec" },
+        { path: "/openapi.json", risk: "high", desc: "OpenAPI spec" },
+        { path: "/api-docs", risk: "high", desc: "API documentation" },
+        { path: "/.DS_Store", risk: "medium", desc: "macOS directory listing" },
+        { path: "/crossdomain.xml", risk: "medium", desc: "Flash cross-domain policy" },
+        { path: "/phpinfo.php", risk: "high", desc: "PHP info page" },
+        { path: "/server-status", risk: "high", desc: "Apache server status" },
+        { path: "/elmah.axd", risk: "high", desc: ".NET error logs" },
+        { path: "/trace.axd", risk: "high", desc: ".NET trace logs" },
+        { path: "/.htaccess", risk: "medium", desc: "Apache config" },
+        { path: "/web.config", risk: "medium", desc: "IIS config" },
+        { path: "/package.json", risk: "medium", desc: "Node.js manifest" },
+        { path: "/composer.json", risk: "medium", desc: "PHP Composer manifest" },
+        { path: "/debug/", risk: "high", desc: "Debug endpoint" },
+        { path: "/actuator", risk: "high", desc: "Spring Boot actuator" },
+        { path: "/actuator/health", risk: "medium", desc: "Spring Boot health" }
+      ];
+      var results = [];
+      var completed = 0;
+      var total = probePaths.length;
+      for (var ppi = 0; ppi < total; ppi++) {
+        (function (probe) {
+          var probeUrl = ppOrigin + probe.path;
+          fetch(probeUrl, { method: "HEAD", credentials: "omit", redirect: "follow" })
+            .then(function (resp) {
+              results.push({
+                path: probe.path,
+                status: resp.status,
+                risk: probe.risk,
+                desc: probe.desc,
+                found: resp.status >= 200 && resp.status < 400
+              });
+            })
+            .catch(function () {
+              results.push({ path: probe.path, status: 0, risk: probe.risk, desc: probe.desc, found: false });
+            })
+            .finally(function () {
+              completed++;
+              if (completed === total) {
+                results.sort(function (a, b) {
+                  var order = { critical: 0, high: 1, medium: 2, info: 3 };
+                  return (order[a.risk] || 4) - (order[b.risk] || 4);
+                });
+                sendResponse({ results: results });
+              }
+            });
+        })(probePaths[ppi]);
+      }
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_PROBE_CORS") {
+      var corsOrigin = msg.origin || "";
+      if (!corsOrigin) { sendResponse({ result: null }); return true; }
+      fetch(corsOrigin, {
+        method: "GET",
+        credentials: "omit",
+        headers: { "Origin": "https://evil-cors-test.example.com" }
+      }).then(function (resp) {
+        var acao = resp.headers.get("Access-Control-Allow-Origin") || "";
+        var acac = resp.headers.get("Access-Control-Allow-Credentials") || "";
+        var result = {
+          acao: acao,
+          acac: acac,
+          vulnerable: false,
+          reason: ""
+        };
+        if (acao === "*") {
+          result.vulnerable = true;
+          result.reason = "ACAO is wildcard (*)";
+          if (acac.toLowerCase() === "true") {
+            result.reason += " with Allow-Credentials: true (critical)";
+          }
+        } else if (acao === "https://evil-cors-test.example.com") {
+          result.vulnerable = true;
+          result.reason = "Origin reflected (accepts any origin)";
+          if (acac.toLowerCase() === "true") {
+            result.reason += " with Allow-Credentials: true (critical)";
+          }
+        } else if (acao === "null") {
+          result.vulnerable = true;
+          result.reason = "ACAO is 'null' — may be exploitable via sandboxed iframe";
+        }
+        sendResponse({ result: result });
+      }).catch(function (err) {
+        sendResponse({ result: { error: String(err).slice(0, 200) } });
+      });
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_DNS_AUDIT") {
+      var dnsDomain = msg.domain || "";
+      if (!dnsDomain) { sendResponse({ findings: [] }); return true; }
+
+      var dnsFindings = [];
+      var dnsCompleted = 0;
+      var dnsTotal = 0;
+      var dnsBase = "https://dns.google/resolve?";
+
+      function dnsQuery(name, type, cb) {
+        dnsTotal++;
+        fetch(dnsBase + "name=" + encodeURIComponent(name) + "&type=" + encodeURIComponent(type))
+          .then(function (r) { return r.json(); })
+          .then(function (data) { cb(data); })
+          .catch(function () { cb(null); })
+          .finally(function () {
+            dnsCompleted++;
+            if (dnsCompleted === dnsTotal) {
+              dnsFindings.sort(function (a, b) {
+                var order = { critical: 0, high: 1, medium: 2, info: 3 };
+                return (order[a.risk] || 4) - (order[b.risk] || 4);
+              });
+              sendResponse({ findings: dnsFindings, domain: dnsDomain });
+            }
+          });
+      }
+
+      dnsQuery(dnsDomain, "TXT", function (data) {
+        var answers = (data && data.Answer) || [];
+        var spfRecord = null;
+        for (var i = 0; i < answers.length; i++) {
+          var txt = (answers[i].data || "").replace(/^"|"$/g, "");
+          if (txt.indexOf("v=spf1") === 0) { spfRecord = txt; break; }
+        }
+        if (!spfRecord) {
+          dnsFindings.push({ check: "SPF", risk: "critical", title: "No SPF record found", detail: "Domain can be spoofed in email. Add a TXT record with v=spf1." });
+        } else {
+          if (spfRecord.indexOf("+all") !== -1) {
+            dnsFindings.push({ check: "SPF", risk: "critical", title: "SPF uses +all (pass all)", detail: "Any server can send email for this domain. Record: " + spfRecord });
+          } else if (spfRecord.indexOf("?all") !== -1) {
+            dnsFindings.push({ check: "SPF", risk: "high", title: "SPF uses ?all (neutral)", detail: "SPF result is neutral — does not reject unauthorized senders. Record: " + spfRecord });
+          } else if (spfRecord.indexOf("~all") !== -1) {
+            dnsFindings.push({ check: "SPF", risk: "medium", title: "SPF uses ~all (softfail)", detail: "Unauthorized senders get softfail (often still delivered). Consider -all. Record: " + spfRecord });
+          } else if (spfRecord.indexOf("-all") !== -1) {
+            dnsFindings.push({ check: "SPF", risk: "info", title: "SPF configured with -all (hardfail)", detail: "Good: unauthorized senders are rejected. Record: " + spfRecord });
+          } else {
+            dnsFindings.push({ check: "SPF", risk: "medium", title: "SPF record present but no all mechanism", detail: "Record: " + spfRecord });
+          }
+          var lookupCount = (spfRecord.match(/\b(include:|a:|mx:|ptr:|exists:)/g) || []).length;
+          if (lookupCount > 8) {
+            dnsFindings.push({ check: "SPF", risk: "medium", title: "SPF has " + lookupCount + " DNS lookups", detail: "SPF spec limits to 10 DNS lookups. Exceeding this causes permerror. Record: " + spfRecord });
+          }
+        }
+      });
+
+      dnsQuery("_dmarc." + dnsDomain, "TXT", function (data) {
+        var answers = (data && data.Answer) || [];
+        var dmarcRecord = null;
+        for (var i = 0; i < answers.length; i++) {
+          var txt = (answers[i].data || "").replace(/^"|"$/g, "");
+          if (txt.indexOf("v=DMARC1") === 0) { dmarcRecord = txt; break; }
+        }
+        if (!dmarcRecord) {
+          dnsFindings.push({ check: "DMARC", risk: "critical", title: "No DMARC record found", detail: "No policy to handle SPF/DKIM failures. Add _dmarc." + dnsDomain + " TXT v=DMARC1; p=reject; ..." });
+        } else {
+          var policyMatch = dmarcRecord.match(/;\s*p\s*=\s*(\w+)/);
+          var policy = policyMatch ? policyMatch[1].toLowerCase() : "";
+          if (policy === "none") {
+            dnsFindings.push({ check: "DMARC", risk: "high", title: "DMARC policy is p=none (monitoring only)", detail: "Spoofed email is not rejected or quarantined. Record: " + dmarcRecord });
+          } else if (policy === "quarantine") {
+            dnsFindings.push({ check: "DMARC", risk: "info", title: "DMARC policy is p=quarantine", detail: "Spoofed email is quarantined (e.g., spam folder). Consider p=reject. Record: " + dmarcRecord });
+          } else if (policy === "reject") {
+            dnsFindings.push({ check: "DMARC", risk: "info", title: "DMARC policy is p=reject", detail: "Good: spoofed email is rejected outright. Record: " + dmarcRecord });
+          } else {
+            dnsFindings.push({ check: "DMARC", risk: "medium", title: "DMARC record present, policy unclear", detail: "Record: " + dmarcRecord });
+          }
+          if (dmarcRecord.indexOf("rua=") === -1) {
+            dnsFindings.push({ check: "DMARC", risk: "medium", title: "DMARC missing aggregate report address (rua=)", detail: "Without rua=, you receive no reports on authentication results." });
+          }
+        }
+      });
+
+      var dkimSelectors = ["default._domainkey", "google._domainkey", "k1._domainkey", "selector1._domainkey", "selector2._domainkey", "s1._domainkey", "s2._domainkey", "dkim._domainkey", "mail._domainkey"];
+      var dkimFound = [];
+      var dkimDone = 0;
+      for (var dki = 0; dki < dkimSelectors.length; dki++) {
+        (function (sel) {
+          dnsQuery(sel + "." + dnsDomain, "TXT", function (data) {
+            var answers = (data && data.Answer) || [];
+            for (var i = 0; i < answers.length; i++) {
+              var txt = (answers[i].data || "").replace(/^"|"$/g, "");
+              if (txt.indexOf("v=DKIM1") !== -1 || txt.indexOf("k=rsa") !== -1 || txt.indexOf("p=") !== -1) {
+                dkimFound.push(sel);
+                break;
+              }
+            }
+            dkimDone++;
+            if (dkimDone === dkimSelectors.length) {
+              if (dkimFound.length === 0) {
+                dnsFindings.push({ check: "DKIM", risk: "medium", title: "No DKIM records found for common selectors", detail: "Checked: " + dkimSelectors.join(", ") + ". DKIM may use a custom selector." });
+              } else {
+                dnsFindings.push({ check: "DKIM", risk: "info", title: "DKIM found: " + dkimFound.join(", "), detail: dkimFound.length + " selector(s) with DKIM records." });
+              }
+            }
+          });
+        })(dkimSelectors[dki]);
+      }
+
+      dnsQuery(dnsDomain, "CAA", function (data) {
+        var answers = (data && data.Answer) || [];
+        var caaRecords = [];
+        for (var i = 0; i < answers.length; i++) {
+          if (answers[i].type === 257) caaRecords.push(answers[i].data || "");
+        }
+        if (caaRecords.length === 0) {
+          dnsFindings.push({ check: "CAA", risk: "medium", title: "No CAA records found", detail: "Any Certificate Authority can issue TLS certificates for this domain. Add CAA records to restrict issuance." });
+        } else {
+          dnsFindings.push({ check: "CAA", risk: "info", title: "CAA records present (" + caaRecords.length + ")", detail: caaRecords.join(" | ") });
+        }
+      });
+
+      dnsQuery(dnsDomain, "MX", function (data) {
+        var answers = (data && data.Answer) || [];
+        var mxRecords = [];
+        for (var i = 0; i < answers.length; i++) {
+          if (answers[i].type === 15) mxRecords.push(answers[i].data || "");
+        }
+        if (mxRecords.length === 0) {
+          dnsFindings.push({ check: "MX", risk: "info", title: "No MX records (no mail server)", detail: "Domain does not accept email directly." });
+        } else {
+          var mxStr = mxRecords.join(", ");
+          var provider = "unknown";
+          if (/google|gmail/i.test(mxStr)) provider = "Google Workspace";
+          else if (/outlook|microsoft/i.test(mxStr)) provider = "Microsoft 365";
+          else if (/protonmail|proton/i.test(mxStr)) provider = "ProtonMail";
+          else if (/mimecast/i.test(mxStr)) provider = "Mimecast";
+          else if (/barracuda/i.test(mxStr)) provider = "Barracuda";
+          else if (/pphosted|proofpoint/i.test(mxStr)) provider = "Proofpoint";
+          dnsFindings.push({ check: "MX", risk: "info", title: "Mail provider: " + provider, detail: mxStr });
+        }
+      });
+
+      dnsQuery(dnsDomain, "NS", function (data) {
+        var answers = (data && data.Answer) || [];
+        var nsRecords = [];
+        for (var i = 0; i < answers.length; i++) {
+          if (answers[i].type === 2) nsRecords.push((answers[i].data || "").replace(/\.$/, ""));
+        }
+        if (nsRecords.length > 0) {
+          var providers = {};
+          for (var ni = 0; ni < nsRecords.length; ni++) {
+            var parts = nsRecords[ni].split(".");
+            var nsDomain = parts.length >= 2 ? parts.slice(-2).join(".") : nsRecords[ni];
+            providers[nsDomain] = true;
+          }
+          var providerKeys = Object.keys(providers);
+          if (providerKeys.length === 1) {
+            dnsFindings.push({ check: "NS", risk: "medium", title: "Single NS provider: " + providerKeys[0], detail: "All nameservers at one provider. If it goes down, the entire domain is unreachable. NS: " + nsRecords.join(", ") });
+          } else {
+            dnsFindings.push({ check: "NS", risk: "info", title: "Nameservers (" + nsRecords.length + ")", detail: nsRecords.join(", ") });
+          }
+        }
+      });
+
+      dnsQuery(dnsDomain, "DNSKEY", function (data) {
+        var answers = (data && data.Answer) || [];
+        var ad = data && data.AD;
+        if (answers.length > 0 || ad) {
+          dnsFindings.push({ check: "DNSSEC", risk: "info", title: "DNSSEC is enabled", detail: answers.length + " DNSKEY record(s)." + (ad ? " AD flag set (authenticated data)." : "") });
+        } else {
+          dnsFindings.push({ check: "DNSSEC", risk: "medium", title: "DNSSEC not enabled", detail: "Domain is not DNSSEC-signed. DNS responses can be spoofed." });
+        }
+      });
+
+      dnsQuery("www." + dnsDomain, "CNAME", function (data) {
+        var answers = (data && data.Answer) || [];
+        for (var i = 0; i < answers.length; i++) {
+          if (answers[i].type === 5) {
+            var target = (answers[i].data || "").replace(/\.$/, "");
+            dnsFindings.push({ check: "CNAME", risk: "info", title: "www CNAME \u2192 " + target, detail: "www." + dnsDomain + " is a CNAME to " + target });
+          }
+        }
+      });
+
+      return true;
+    }
+    if (msg && msg.type === "BOXEDIN_EXPORT_ALL_FINDINGS") {
+      var expTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
+      var report = {
+        exportedAt: new Date().toISOString(),
+        tabId: expTid,
+        url: (sender && sender.tab) ? sender.tab.url || "" : "",
+        auth: headerFindingsByTab.get(expTid) || {},
+        exfil: exfilEventsByTab.get(expTid) || [],
+        inject: injectFindingsByTab.get(expTid) || {},
+        tech: techFindingsByTab.get(expTid) || [],
+        apis: apiFindingsByTab.get(expTid) || [],
+        deps: depsFindingsByTab.get(expTid) || [],
+        timeline: timelineEventsByTab.get(expTid) || []
+      };
+      var sevCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+      var injData = report.inject;
+      if (injData.csp && injData.csp.missing) sevCounts.critical++;
+      if (injData.cors) sevCounts.medium += injData.cors.length;
+      if (injData.xss) sevCounts.critical += injData.xss.length;
+      if (injData.csrf) sevCounts.medium += injData.csrf.length;
+      if (injData.reflectedParams) sevCounts.high += injData.reflectedParams.length;
+      if (injData.openRedirects) sevCounts.medium += injData.openRedirects.length;
+      if (injData.mixedContent) sevCounts.low += injData.mixedContent.length;
+      var authData = report.auth;
+      if (authData.reqHeaders) {
+        for (var ah = 0; ah < authData.reqHeaders.length; ah++) {
+          if (authData.reqHeaders[ah].authOverHttp) sevCounts.critical++;
+        }
+      }
+      var depsArr = report.deps;
+      for (var ddi = 0; ddi < depsArr.length; ddi++) {
+        if (depsArr[ddi].thirdParty && !depsArr[ddi].sri) sevCounts.medium++;
+      }
+      report.severitySummary = sevCounts;
+      sendResponse({ report: report });
+      return true;
+    }
     if (msg && msg.type === "BOXEDIN_RESET_EXFIL_EVENTS") {
       var exRTid = sender && sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : -1;
       if (exRTid >= 0) {
@@ -1119,6 +1544,8 @@
         injectFindingsByTab.delete(rTid);
         techFindingsByTab.delete(rTid);
         apiFindingsByTab.delete(rTid);
+        depsFindingsByTab.delete(rTid);
+        timelineEventsByTab.delete(rTid);
         capturedRequestsByTab.delete(rTid);
       }
       sendResponse({ ok: true });
@@ -1619,6 +2046,8 @@
       injectFindingsByTab.delete(tabId);
       techFindingsByTab.delete(tabId);
       apiFindingsByTab.delete(tabId);
+      depsFindingsByTab.delete(tabId);
+      timelineEventsByTab.delete(tabId);
       capturedRequestsByTab.delete(tabId);
     });
   }

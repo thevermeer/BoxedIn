@@ -4,7 +4,7 @@
   left: 12px;
   bottom: 12px;
   z-index: 2147483646;
-  max-width: min(360px, calc(100vw - 24px));
+  max-width: min(460px, calc(100vw - 24px));
   font-family: system-ui, -apple-system, Segoe UI, sans-serif;
   font-size: 11px;
   line-height: 1.35;
@@ -578,7 +578,9 @@
 .boxedin-rt__osint-fofa-btn,
 .boxedin-rt__osint-fofa-manual-btn,
 .boxedin-rt__osint-companieshouse-btn,
-.boxedin-rt__osint-companieshouse-manual-btn {
+.boxedin-rt__osint-companieshouse-manual-btn,
+.boxedin-rt__osint-securitytrails-btn,
+.boxedin-rt__osint-securitytrails-manual-btn {
   flex-shrink: 0;
   font: inherit;
   font-size: 9px;
@@ -614,7 +616,9 @@
 .boxedin-rt__osint-fofa-btn:hover,
 .boxedin-rt__osint-fofa-manual-btn:hover,
 .boxedin-rt__osint-companieshouse-btn:hover,
-.boxedin-rt__osint-companieshouse-manual-btn:hover {
+.boxedin-rt__osint-companieshouse-manual-btn:hover,
+.boxedin-rt__osint-securitytrails-btn:hover,
+.boxedin-rt__osint-securitytrails-manual-btn:hover {
   background: rgba(0, 0, 0, 0.08);
 }
 
@@ -639,7 +643,9 @@
 .boxedin-stats--dark .boxedin-rt__osint-fofa-btn,
 .boxedin-stats--dark .boxedin-rt__osint-fofa-manual-btn,
 .boxedin-stats--dark .boxedin-rt__osint-companieshouse-btn,
-.boxedin-stats--dark .boxedin-rt__osint-companieshouse-manual-btn {
+.boxedin-stats--dark .boxedin-rt__osint-companieshouse-manual-btn,
+.boxedin-stats--dark .boxedin-rt__osint-securitytrails-btn,
+.boxedin-stats--dark .boxedin-rt__osint-securitytrails-manual-btn {
   border-color: rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.08);
 }
@@ -665,7 +671,9 @@
 .boxedin-stats--dark .boxedin-rt__osint-fofa-btn:hover,
 .boxedin-stats--dark .boxedin-rt__osint-fofa-manual-btn:hover,
 .boxedin-stats--dark .boxedin-rt__osint-companieshouse-btn:hover,
-.boxedin-stats--dark .boxedin-rt__osint-companieshouse-manual-btn:hover {
+.boxedin-stats--dark .boxedin-rt__osint-companieshouse-manual-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-securitytrails-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-securitytrails-manual-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -686,7 +694,8 @@
 .boxedin-rt__osint-dossier-input,
 .boxedin-rt__osint-phishtank-input,
 .boxedin-rt__osint-fofa-input,
-.boxedin-rt__osint-companieshouse-input {
+.boxedin-rt__osint-companieshouse-input,
+.boxedin-rt__osint-securitytrails-input {
   font: inherit;
   font-size: 10px;
   padding: 4px 8px;
@@ -708,7 +717,8 @@
 .boxedin-stats--dark .boxedin-rt__osint-dossier-input,
 .boxedin-stats--dark .boxedin-rt__osint-phishtank-input,
 .boxedin-stats--dark .boxedin-rt__osint-fofa-input,
-.boxedin-stats--dark .boxedin-rt__osint-companieshouse-input {
+.boxedin-stats--dark .boxedin-rt__osint-companieshouse-input,
+.boxedin-stats--dark .boxedin-rt__osint-securitytrails-input {
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.06);
 }
@@ -1462,4 +1472,161 @@
 
 .boxedin-stats--dark ~ #boxedin-repeater-root .boxedin-rpt__resp-body {
   background: rgba(255, 255, 255, 0.05);
+}
+
+/* ── Probe / action buttons ─────────────────────────────────────── */
+
+.boxedin-rt__probe-paths-btn,
+.boxedin-rt__probe-cors-btn,
+.boxedin-rt__dns-audit-btn {
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.04);
+  color: inherit;
+  cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+
+.boxedin-rt__probe-paths-btn:hover,
+.boxedin-rt__probe-cors-btn:hover,
+.boxedin-rt__dns-audit-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.boxedin-stats--dark .boxedin-rt__probe-paths-btn,
+.boxedin-stats--dark .boxedin-rt__probe-cors-btn,
+.boxedin-stats--dark .boxedin-rt__dns-audit-btn {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.boxedin-stats--dark .boxedin-rt__probe-paths-btn:hover,
+.boxedin-stats--dark .boxedin-rt__probe-cors-btn:hover,
+.boxedin-stats--dark .boxedin-rt__dns-audit-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.boxedin-rt__probe-paths-btn:disabled,
+.boxedin-rt__probe-cors-btn:disabled,
+.boxedin-rt__dns-audit-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ── Timeline ───────────────────────────────────────────────────── */
+
+.boxedin-rt__timeline-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.boxedin-rt__timeline-time {
+  font-size: 8px;
+  opacity: 0.5;
+  flex-shrink: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.boxedin-rt__timeline-elapsed {
+  font-size: 8px;
+  opacity: 0.4;
+  flex-shrink: 0;
+  min-width: 40px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ── Export button ───────────────────────────────────────────────── */
+
+.boxedin-stats__export-findings {
+  font: inherit;
+  font-size: 11px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.5;
+  padding: 0 3px;
+}
+
+.boxedin-stats__export-findings:hover {
+  opacity: 0.9;
+}
+
+/* ── DNS audit ──────────────────────────────────────────────────── */
+
+.boxedin-rt__dns-summary {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 6px 0 4px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  margin-bottom: 4px;
+}
+
+.boxedin-stats--dark .boxedin-rt__dns-summary {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.boxedin-rt__dns-check {
+  font-size: 8px;
+  font-weight: 700;
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* ── Probe content viewer ───────────────────────────────────────── */
+
+.boxedin-rt__probe-view-btn {
+  font: inherit;
+  font-size: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0 3px;
+  opacity: 0.5;
+  vertical-align: middle;
+}
+
+.boxedin-rt__probe-view-btn:hover {
+  opacity: 1;
+}
+
+.boxedin-rt__probe-content {
+  display: none;
+  margin-top: 4px;
+}
+
+.boxedin-rt__probe-content-meta {
+  font-size: 8px;
+  font-weight: 600;
+  opacity: 0.5;
+  padding: 2px 0;
+}
+
+.boxedin-rt__probe-content-body {
+  margin: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.boxedin-stats--dark .boxedin-rt__probe-content-body {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
 }
