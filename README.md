@@ -255,9 +255,9 @@ Enumerates API endpoints discovered in the page through five complementary detec
 
 ### OSINT Tab
 
-Integrates with two public OSINT search engines — **crt.sh** and **Shodan** — to perform external reconnaissance on domains and hosts. Searches open in a new browser tab; no API keys or accounts are required.
+Integrates with eleven public OSINT search engines — **crt.sh**, **Shodan**, **WHOIS**, the **Wayback Machine**, **Intelligence X**, **urlscan.io**, **Censys**, **Domain Dossier**, **PhishTank**, **FOFA**, and **Companies House** — to perform external reconnaissance on domains and hosts. Searches open in a new browser tab; no API keys or accounts are required for basic lookups.
 
-The OSINT panel is divided into two sections:
+The OSINT panel is divided into eleven sections:
 
 **crt.sh — Certificate Transparency**
 
@@ -271,9 +271,63 @@ The OSINT panel is divided into two sections:
 - **Manual query input** — a text field for searching arbitrary domains or IP addresses.
 - Shodan indexes internet-facing hosts and reveals open ports, running services, SSL certificate details, banner data, known vulnerabilities, and organizational metadata. Useful for mapping exposed infrastructure and identifying misconfigured or forgotten services.
 
+**WHOIS — Domain Registration**
+
+- **One-click lookup** — the current page's domain is shown with a "WHOIS Lookup" button that opens `https://who.is/whois/<domain>` in a new tab.
+- **Manual domain input** — a text field for looking up arbitrary domains.
+- WHOIS records reveal domain registration details including the registrant organization, registrar, creation and expiry dates, name servers, and contact information. Useful for identifying domain ownership, spotting recently registered or expiring domains, and correlating infrastructure across organizations.
+
+**Wayback Machine — Web Archive**
+
+- **One-click search** — the current page's domain is shown with a "Search Wayback" button that opens `https://web.archive.org/web/*/<domain>` in a new tab.
+- **Manual domain input** — a text field for searching arbitrary domains.
+- The Wayback Machine (Internet Archive) indexes historical snapshots of web pages over time. Useful for finding removed pages, leaked or exposed content, old configurations, previous versions of login flows, deprecated API endpoints, and tracking how a site's security posture has changed.
+
+**Intelligence X — Deep Search**
+
+- **One-click search** — the current page's domain is shown with a "Search IntelX" button that opens `https://intelx.io/?s=<domain>` in a new tab.
+- **Manual query input** — a text field for searching arbitrary selectors (domains, email addresses, IPs, CIDRs, etc.).
+- Intelligence X indexes pastes, darknet content (Tor/I2P), leaked databases, WHOIS history, DNS records, and public web archives. The free tier allows 50 lookups per day. Useful for discovering leaked credentials, exposed data, historical DNS/WHOIS changes, and darknet mentions of a target domain or organization.
+
+**urlscan.io — URL & Domain Scanner**
+
+- **One-click search** — the current page's domain is shown with a "Search urlscan" button that opens `https://urlscan.io/search/#domain:<domain>` in a new tab.
+- **Manual domain input** — a text field for searching arbitrary domains.
+- urlscan.io scans and analyses URLs/domains for malicious indicators, HTTP transactions, DOM snapshots, technology stacks, and third-party resources. Useful for understanding what a page loads, detecting malicious redirects, and identifying tracker infrastructure.
+
+**Censys — Internet-Wide Host Search**
+
+- **One-click search** — the current page's domain is shown with a "Search Censys" button that opens `https://search.censys.io/search?resource=hosts&q=<domain>` in a new tab.
+- **Manual query input** — a text field for searching arbitrary domains or IPs.
+- Censys provides internet-wide scan data covering hosts, certificates, open ports, and services. Free accounts allow 250 queries per month. Useful for discovering exposed services, certificate transparency data, and mapping an organisation's internet-facing attack surface.
+
+**Domain Dossier — DNS & WHOIS Report**
+
+- **One-click search** — the current page's domain is shown with a "Run Dossier" button that opens `https://centralops.net/co/DomainDossier.aspx?addr=<domain>&dom_whois=true&dom_dns=true&net_whois=true` in a new tab.
+- **Manual domain input** — a text field for searching arbitrary domains or IPs.
+- Domain Dossier (CentralOps.net) runs DNS, domain WHOIS, and network WHOIS lookups in a single combined report. Useful for quick one-page reconnaissance when you need DNS records, registrar info, and network ownership all at once.
+
+**PhishTank — Phishing URL Database**
+
+- **One-click search** — the current page's domain is shown with a "Search PhishTank" button that opens `https://phishtank.org/phish_search.php?search=<domain>&action=search` in a new tab.
+- **Manual domain input** — a text field for searching arbitrary domains.
+- PhishTank is a community-driven database of verified phishing URLs operated by Cisco/OpenDNS. Useful for checking whether a domain has been reported for phishing activity, validating suspicious links, and assessing domain reputation.
+
+**FOFA — Cyberspace Search Engine**
+
+- **One-click search** — the current page's domain is shown with a "Search FOFA" button that opens `https://en.fofa.info/result?qbase64=<base64(domain="<domain>")>` in a new tab.
+- **Manual domain input** — a text field for searching arbitrary domains.
+- FOFA is a Chinese cyberspace mapping engine similar to Shodan and Censys. It indexes hosts, ports, protocols, banners, and web components globally. Free tier available. Useful as a complementary asset-discovery source with different crawling coverage and indexing.
+
+**Companies House — UK Company Registry**
+
+- **One-click search** — the current page's domain is shown with a "Search Companies House" button that opens `https://find-and-update.company-information.service.gov.uk/search?q=<domain>` in a new tab.
+- **Manual query input** — a text field for searching by company name or domain.
+- Companies House is the official UK government registry of companies. Useful for identifying the legal entity behind a domain, finding director names, registered addresses, filing history, and accounts — key data for social engineering assessments and target profiling.
+
 In addition to the dedicated tab, search icons appear inline across other panels:
 
-- **Blocks panel** — a magnifying glass (crt.sh) and globe (Shodan) icon next to each observed hostname in the hostname capture list (when red-team mode is enabled).
+- **Blocks panel** — a magnifying glass (crt.sh), globe (Shodan), document (WHOIS), hourglass (Wayback Machine), and detective (Intelligence X) icon next to each observed hostname in the hostname capture list (when red-team mode is enabled).
 - **Exfil panel** — a magnifying glass (crt.sh) and globe (Shodan) icon next to each third-party host in the exfiltration event stream, alongside the existing "allow" button.
 
 ### Request Repeater

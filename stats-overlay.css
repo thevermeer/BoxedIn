@@ -560,7 +560,25 @@
 .boxedin-rt__osint-search-btn,
 .boxedin-rt__osint-manual-btn,
 .boxedin-rt__osint-shodan-btn,
-.boxedin-rt__osint-shodan-manual-btn {
+.boxedin-rt__osint-shodan-manual-btn,
+.boxedin-rt__osint-whois-btn,
+.boxedin-rt__osint-whois-manual-btn,
+.boxedin-rt__osint-wayback-btn,
+.boxedin-rt__osint-wayback-manual-btn,
+.boxedin-rt__osint-intelx-btn,
+.boxedin-rt__osint-intelx-manual-btn,
+.boxedin-rt__osint-urlscan-btn,
+.boxedin-rt__osint-urlscan-manual-btn,
+.boxedin-rt__osint-censys-btn,
+.boxedin-rt__osint-censys-manual-btn,
+.boxedin-rt__osint-dossier-btn,
+.boxedin-rt__osint-dossier-manual-btn,
+.boxedin-rt__osint-phishtank-btn,
+.boxedin-rt__osint-phishtank-manual-btn,
+.boxedin-rt__osint-fofa-btn,
+.boxedin-rt__osint-fofa-manual-btn,
+.boxedin-rt__osint-companieshouse-btn,
+.boxedin-rt__osint-companieshouse-manual-btn {
   flex-shrink: 0;
   font: inherit;
   font-size: 9px;
@@ -578,14 +596,50 @@
 .boxedin-rt__osint-search-btn:hover,
 .boxedin-rt__osint-manual-btn:hover,
 .boxedin-rt__osint-shodan-btn:hover,
-.boxedin-rt__osint-shodan-manual-btn:hover {
+.boxedin-rt__osint-shodan-manual-btn:hover,
+.boxedin-rt__osint-whois-btn:hover,
+.boxedin-rt__osint-whois-manual-btn:hover,
+.boxedin-rt__osint-wayback-btn:hover,
+.boxedin-rt__osint-wayback-manual-btn:hover,
+.boxedin-rt__osint-intelx-btn:hover,
+.boxedin-rt__osint-intelx-manual-btn:hover,
+.boxedin-rt__osint-urlscan-btn:hover,
+.boxedin-rt__osint-urlscan-manual-btn:hover,
+.boxedin-rt__osint-censys-btn:hover,
+.boxedin-rt__osint-censys-manual-btn:hover,
+.boxedin-rt__osint-dossier-btn:hover,
+.boxedin-rt__osint-dossier-manual-btn:hover,
+.boxedin-rt__osint-phishtank-btn:hover,
+.boxedin-rt__osint-phishtank-manual-btn:hover,
+.boxedin-rt__osint-fofa-btn:hover,
+.boxedin-rt__osint-fofa-manual-btn:hover,
+.boxedin-rt__osint-companieshouse-btn:hover,
+.boxedin-rt__osint-companieshouse-manual-btn:hover {
   background: rgba(0, 0, 0, 0.08);
 }
 
 .boxedin-stats--dark .boxedin-rt__osint-search-btn,
 .boxedin-stats--dark .boxedin-rt__osint-manual-btn,
 .boxedin-stats--dark .boxedin-rt__osint-shodan-btn,
-.boxedin-stats--dark .boxedin-rt__osint-shodan-manual-btn {
+.boxedin-stats--dark .boxedin-rt__osint-shodan-manual-btn,
+.boxedin-stats--dark .boxedin-rt__osint-whois-btn,
+.boxedin-stats--dark .boxedin-rt__osint-whois-manual-btn,
+.boxedin-stats--dark .boxedin-rt__osint-wayback-btn,
+.boxedin-stats--dark .boxedin-rt__osint-wayback-manual-btn,
+.boxedin-stats--dark .boxedin-rt__osint-intelx-btn,
+.boxedin-stats--dark .boxedin-rt__osint-intelx-manual-btn,
+.boxedin-stats--dark .boxedin-rt__osint-urlscan-btn,
+.boxedin-stats--dark .boxedin-rt__osint-urlscan-manual-btn,
+.boxedin-stats--dark .boxedin-rt__osint-censys-btn,
+.boxedin-stats--dark .boxedin-rt__osint-censys-manual-btn,
+.boxedin-stats--dark .boxedin-rt__osint-dossier-btn,
+.boxedin-stats--dark .boxedin-rt__osint-dossier-manual-btn,
+.boxedin-stats--dark .boxedin-rt__osint-phishtank-btn,
+.boxedin-stats--dark .boxedin-rt__osint-phishtank-manual-btn,
+.boxedin-stats--dark .boxedin-rt__osint-fofa-btn,
+.boxedin-stats--dark .boxedin-rt__osint-fofa-manual-btn,
+.boxedin-stats--dark .boxedin-rt__osint-companieshouse-btn,
+.boxedin-stats--dark .boxedin-rt__osint-companieshouse-manual-btn {
   border-color: rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.08);
 }
@@ -593,7 +647,25 @@
 .boxedin-stats--dark .boxedin-rt__osint-search-btn:hover,
 .boxedin-stats--dark .boxedin-rt__osint-manual-btn:hover,
 .boxedin-stats--dark .boxedin-rt__osint-shodan-btn:hover,
-.boxedin-stats--dark .boxedin-rt__osint-shodan-manual-btn:hover {
+.boxedin-stats--dark .boxedin-rt__osint-shodan-manual-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-whois-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-whois-manual-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-wayback-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-wayback-manual-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-intelx-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-intelx-manual-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-urlscan-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-urlscan-manual-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-censys-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-censys-manual-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-dossier-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-dossier-manual-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-phishtank-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-phishtank-manual-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-fofa-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-fofa-manual-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-companieshouse-btn:hover,
+.boxedin-stats--dark .boxedin-rt__osint-companieshouse-manual-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -605,7 +677,16 @@
 }
 
 .boxedin-rt__osint-input,
-.boxedin-rt__osint-shodan-input {
+.boxedin-rt__osint-shodan-input,
+.boxedin-rt__osint-whois-input,
+.boxedin-rt__osint-wayback-input,
+.boxedin-rt__osint-intelx-input,
+.boxedin-rt__osint-urlscan-input,
+.boxedin-rt__osint-censys-input,
+.boxedin-rt__osint-dossier-input,
+.boxedin-rt__osint-phishtank-input,
+.boxedin-rt__osint-fofa-input,
+.boxedin-rt__osint-companieshouse-input {
   font: inherit;
   font-size: 10px;
   padding: 4px 8px;
@@ -618,13 +699,25 @@
 }
 
 .boxedin-stats--dark .boxedin-rt__osint-input,
-.boxedin-stats--dark .boxedin-rt__osint-shodan-input {
+.boxedin-stats--dark .boxedin-rt__osint-shodan-input,
+.boxedin-stats--dark .boxedin-rt__osint-whois-input,
+.boxedin-stats--dark .boxedin-rt__osint-wayback-input,
+.boxedin-stats--dark .boxedin-rt__osint-intelx-input,
+.boxedin-stats--dark .boxedin-rt__osint-urlscan-input,
+.boxedin-stats--dark .boxedin-rt__osint-censys-input,
+.boxedin-stats--dark .boxedin-rt__osint-dossier-input,
+.boxedin-stats--dark .boxedin-rt__osint-phishtank-input,
+.boxedin-stats--dark .boxedin-rt__osint-fofa-input,
+.boxedin-stats--dark .boxedin-rt__osint-companieshouse-input {
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.06);
 }
 
 .boxedin-rt__osint-btn,
-.boxedin-rt__shodan-btn {
+.boxedin-rt__shodan-btn,
+.boxedin-rt__whois-btn,
+.boxedin-rt__wayback-btn,
+.boxedin-rt__intelx-btn {
   font: inherit;
   font-size: 9px;
   padding: 0 3px;
@@ -638,7 +731,10 @@
 }
 
 .boxedin-rt__osint-btn:hover,
-.boxedin-rt__shodan-btn:hover {
+.boxedin-rt__shodan-btn:hover,
+.boxedin-rt__whois-btn:hover,
+.boxedin-rt__wayback-btn:hover,
+.boxedin-rt__intelx-btn:hover {
   opacity: 1;
 }
 

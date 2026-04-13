@@ -263,6 +263,106 @@
     } catch (e) { /* ignore */ }
   }
 
+  /** Open a Wayback Machine search for a domain in a new tab. */
+  function openWaybackSearch(domain) {
+    if (!domain) return;
+    var url = "https://web.archive.org/web/*/" + encodeURIComponent(domain);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Open an Intelligence X search for a domain in a new tab. */
+  function openIntelXSearch(query) {
+    if (!query) return;
+    var url = "https://intelx.io/?s=" + encodeURIComponent(query);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Open a WHOIS lookup for a domain in a new tab. */
+  function openWhoisSearch(domain) {
+    if (!domain) return;
+    var url = "https://who.is/whois/" + encodeURIComponent(domain);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Open a urlscan.io search for a domain in a new tab. */
+  function openUrlscanSearch(domain) {
+    if (!domain) return;
+    var url = "https://urlscan.io/search/#domain:" + encodeURIComponent(domain);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Open a Censys search for a domain in a new tab. */
+  function openCensysSearch(domain) {
+    if (!domain) return;
+    var url = "https://search.censys.io/search?resource=hosts&q=" + encodeURIComponent(domain);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Open a Domain Dossier lookup for a domain in a new tab. */
+  function openDomainDossierSearch(domain) {
+    if (!domain) return;
+    var url = "https://centralops.net/co/DomainDossier.aspx?addr=" + encodeURIComponent(domain) + "&dom_whois=true&dom_dns=true&net_whois=true";
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Open a PhishTank search for a domain in a new tab. */
+  function openPhishTankSearch(domain) {
+    if (!domain) return;
+    var url = "https://phishtank.org/phish_search.php?search=" + encodeURIComponent(domain) + "&action=search";
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Open a FOFA search for a domain in a new tab. */
+  function openFofaSearch(domain) {
+    if (!domain) return;
+    var query = 'domain="' + domain + '"';
+    var url = "https://en.fofa.info/result?qbase64=" + btoa(query);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Open a Companies House search for a domain/company in a new tab. */
+  function openCompaniesHouseSearch(query) {
+    if (!query) return;
+    var url = "https://find-and-update.company-information.service.gov.uk/search?q=" + encodeURIComponent(query);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
   /** Dispatch a fetch-and-render cycle for whichever tab is active. */
   function renderActivePanel() {
     if (activeTab === "blocks") fetchStats();
@@ -548,7 +648,13 @@
             (redteamEnabled ? '<button type="button" class="boxedin-rt__osint-btn" data-domain="' +
             escapeAttr(hosts[h]) + '" title="Search crt.sh">\uD83D\uDD0D</button>' +
             '<button type="button" class="boxedin-rt__shodan-btn" data-query="' +
-            escapeAttr(hosts[h]) + '" title="Search Shodan">\uD83C\uDF10</button>' : '') +
+            escapeAttr(hosts[h]) + '" title="Search Shodan">\uD83C\uDF10</button>' +
+            '<button type="button" class="boxedin-rt__whois-btn" data-domain="' +
+            escapeAttr(hosts[h]) + '" title="WHOIS lookup">\uD83D\uDCC4</button>' +
+            '<button type="button" class="boxedin-rt__wayback-btn" data-domain="' +
+            escapeAttr(hosts[h]) + '" title="Wayback Machine">\u231B</button>' +
+            '<button type="button" class="boxedin-rt__intelx-btn" data-query="' +
+            escapeAttr(hosts[h]) + '" title="Intelligence X">\uD83D\uDD75</button>' : '') +
             '</li>');
         }
         parts.push('</ul>');
@@ -646,6 +752,39 @@
               openShodanSearch(btn.getAttribute("data-query"));
             });
           })(shodanBtns[sb]);
+        }
+
+        var whoisBtns = root.querySelectorAll(".boxedin-stats__hosts-list .boxedin-rt__whois-btn");
+        for (var wb = 0; wb < whoisBtns.length; wb++) {
+          (function (btn) {
+            btn.addEventListener("click", function (ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              openWhoisSearch(btn.getAttribute("data-domain"));
+            });
+          })(whoisBtns[wb]);
+        }
+
+        var waybackBtns = root.querySelectorAll(".boxedin-stats__hosts-list .boxedin-rt__wayback-btn");
+        for (var wbb = 0; wbb < waybackBtns.length; wbb++) {
+          (function (btn) {
+            btn.addEventListener("click", function (ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              openWaybackSearch(btn.getAttribute("data-domain"));
+            });
+          })(waybackBtns[wbb]);
+        }
+
+        var intelxBtns = root.querySelectorAll(".boxedin-stats__hosts-list .boxedin-rt__intelx-btn");
+        for (var ixb = 0; ixb < intelxBtns.length; ixb++) {
+          (function (btn) {
+            btn.addEventListener("click", function (ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              openIntelXSearch(btn.getAttribute("data-query"));
+            });
+          })(intelxBtns[ixb]);
         }
       }
     } else {
@@ -1435,6 +1574,231 @@
 
     parts.push('</div>');
 
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">WHOIS — Domain Registration</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Look up domain registration details including registrant, registrar, creation/expiry dates, and name servers.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-whois-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">WHOIS Lookup</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-whois-input" placeholder="example.com" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-whois-manual-btn">Lookup</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Wayback Machine — Web Archive</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Browse archived snapshots of a site over time. Useful for finding removed pages, leaked content, old configurations, and historical changes.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-wayback-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">Search Wayback</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-wayback-input" placeholder="example.com" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-wayback-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Intelligence X — Deep Search</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Search pastes, darknet, leaks, WHOIS history, DNS records, and more. Free tier allows 50 lookups/day.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-intelx-btn" data-query="' +
+        escapeAttr(pageDomain) + '">Search IntelX</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-intelx-input" placeholder="example.com, email, IP, etc." spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-intelx-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">urlscan.io — URL &amp; Domain Scanner</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Scans and analyses URLs/domains for malicious indicators, HTTP transactions, DOM snapshots, and technology stacks.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-urlscan-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">Search urlscan</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-urlscan-input" placeholder="example.com" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-urlscan-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Censys — Internet-Wide Host Search</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Searches internet-wide scan data for hosts, certificates, open ports, and services. Free account allows 250 queries/month.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-censys-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">Search Censys</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-censys-input" placeholder="example.com or 1.2.3.4" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-censys-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Domain Dossier — DNS &amp; WHOIS Report</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Runs DNS, WHOIS, and network WHOIS lookups in one combined report via CentralOps.net.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-dossier-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">Run Dossier</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-dossier-input" placeholder="example.com or IP" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-dossier-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">PhishTank — Phishing URL Database</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Community-driven database of verified phishing URLs. Check whether a domain has been reported for phishing activity.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-phishtank-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">Search PhishTank</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-phishtank-input" placeholder="example.com" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-phishtank-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">FOFA — Cyberspace Search Engine</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Chinese cyberspace mapping engine (similar to Shodan/Censys). Searches for hosts, ports, protocols, and banners. Free tier available.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-fofa-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">Search FOFA</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-fofa-input" placeholder="example.com" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-fofa-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Companies House — UK Company Registry</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Official UK government registry of companies. Search by company name or domain to find registration details, directors, filings, and accounts.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-companieshouse-btn" data-query="' +
+        escapeAttr(pageDomain) + '">Search Companies House</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-companieshouse-input" placeholder="company name or domain" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-companieshouse-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
     renderShell(parts.join(""));
     wireOsintPanel();
   }
@@ -1483,6 +1847,213 @@
           e.preventDefault();
           var val = shodanManualInput.value.trim();
           if (val) openShodanSearch(val);
+        }
+      });
+    }
+
+    var whoisBtn = root.querySelector(".boxedin-rt__osint-whois-btn");
+    if (whoisBtn) {
+      whoisBtn.addEventListener("click", function () {
+        openWhoisSearch(whoisBtn.getAttribute("data-domain"));
+      });
+    }
+
+    var whoisManualBtn = root.querySelector(".boxedin-rt__osint-whois-manual-btn");
+    var whoisManualInput = root.querySelector(".boxedin-rt__osint-whois-input");
+    if (whoisManualBtn && whoisManualInput) {
+      whoisManualBtn.addEventListener("click", function () {
+        var val = whoisManualInput.value.trim();
+        if (val) openWhoisSearch(val);
+      });
+      whoisManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = whoisManualInput.value.trim();
+          if (val) openWhoisSearch(val);
+        }
+      });
+    }
+
+    var waybackBtn = root.querySelector(".boxedin-rt__osint-wayback-btn");
+    if (waybackBtn) {
+      waybackBtn.addEventListener("click", function () {
+        openWaybackSearch(waybackBtn.getAttribute("data-domain"));
+      });
+    }
+
+    var waybackManualBtn = root.querySelector(".boxedin-rt__osint-wayback-manual-btn");
+    var waybackManualInput = root.querySelector(".boxedin-rt__osint-wayback-input");
+    if (waybackManualBtn && waybackManualInput) {
+      waybackManualBtn.addEventListener("click", function () {
+        var val = waybackManualInput.value.trim();
+        if (val) openWaybackSearch(val);
+      });
+      waybackManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = waybackManualInput.value.trim();
+          if (val) openWaybackSearch(val);
+        }
+      });
+    }
+
+    var intelxBtn = root.querySelector(".boxedin-rt__osint-intelx-btn");
+    if (intelxBtn) {
+      intelxBtn.addEventListener("click", function () {
+        openIntelXSearch(intelxBtn.getAttribute("data-query"));
+      });
+    }
+
+    var intelxManualBtn = root.querySelector(".boxedin-rt__osint-intelx-manual-btn");
+    var intelxManualInput = root.querySelector(".boxedin-rt__osint-intelx-input");
+    if (intelxManualBtn && intelxManualInput) {
+      intelxManualBtn.addEventListener("click", function () {
+        var val = intelxManualInput.value.trim();
+        if (val) openIntelXSearch(val);
+      });
+      intelxManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = intelxManualInput.value.trim();
+          if (val) openIntelXSearch(val);
+        }
+      });
+    }
+
+    var urlscanBtn = root.querySelector(".boxedin-rt__osint-urlscan-btn");
+    if (urlscanBtn) {
+      urlscanBtn.addEventListener("click", function () {
+        openUrlscanSearch(urlscanBtn.getAttribute("data-domain"));
+      });
+    }
+
+    var urlscanManualBtn = root.querySelector(".boxedin-rt__osint-urlscan-manual-btn");
+    var urlscanManualInput = root.querySelector(".boxedin-rt__osint-urlscan-input");
+    if (urlscanManualBtn && urlscanManualInput) {
+      urlscanManualBtn.addEventListener("click", function () {
+        var val = urlscanManualInput.value.trim();
+        if (val) openUrlscanSearch(val);
+      });
+      urlscanManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = urlscanManualInput.value.trim();
+          if (val) openUrlscanSearch(val);
+        }
+      });
+    }
+
+    var censysBtn = root.querySelector(".boxedin-rt__osint-censys-btn");
+    if (censysBtn) {
+      censysBtn.addEventListener("click", function () {
+        openCensysSearch(censysBtn.getAttribute("data-domain"));
+      });
+    }
+
+    var censysManualBtn = root.querySelector(".boxedin-rt__osint-censys-manual-btn");
+    var censysManualInput = root.querySelector(".boxedin-rt__osint-censys-input");
+    if (censysManualBtn && censysManualInput) {
+      censysManualBtn.addEventListener("click", function () {
+        var val = censysManualInput.value.trim();
+        if (val) openCensysSearch(val);
+      });
+      censysManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = censysManualInput.value.trim();
+          if (val) openCensysSearch(val);
+        }
+      });
+    }
+
+    var dossierBtn = root.querySelector(".boxedin-rt__osint-dossier-btn");
+    if (dossierBtn) {
+      dossierBtn.addEventListener("click", function () {
+        openDomainDossierSearch(dossierBtn.getAttribute("data-domain"));
+      });
+    }
+
+    var dossierManualBtn = root.querySelector(".boxedin-rt__osint-dossier-manual-btn");
+    var dossierManualInput = root.querySelector(".boxedin-rt__osint-dossier-input");
+    if (dossierManualBtn && dossierManualInput) {
+      dossierManualBtn.addEventListener("click", function () {
+        var val = dossierManualInput.value.trim();
+        if (val) openDomainDossierSearch(val);
+      });
+      dossierManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = dossierManualInput.value.trim();
+          if (val) openDomainDossierSearch(val);
+        }
+      });
+    }
+
+    var phishtankBtn = root.querySelector(".boxedin-rt__osint-phishtank-btn");
+    if (phishtankBtn) {
+      phishtankBtn.addEventListener("click", function () {
+        openPhishTankSearch(phishtankBtn.getAttribute("data-domain"));
+      });
+    }
+
+    var phishtankManualBtn = root.querySelector(".boxedin-rt__osint-phishtank-manual-btn");
+    var phishtankManualInput = root.querySelector(".boxedin-rt__osint-phishtank-input");
+    if (phishtankManualBtn && phishtankManualInput) {
+      phishtankManualBtn.addEventListener("click", function () {
+        var val = phishtankManualInput.value.trim();
+        if (val) openPhishTankSearch(val);
+      });
+      phishtankManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = phishtankManualInput.value.trim();
+          if (val) openPhishTankSearch(val);
+        }
+      });
+    }
+
+    var fofaBtn = root.querySelector(".boxedin-rt__osint-fofa-btn");
+    if (fofaBtn) {
+      fofaBtn.addEventListener("click", function () {
+        openFofaSearch(fofaBtn.getAttribute("data-domain"));
+      });
+    }
+
+    var fofaManualBtn = root.querySelector(".boxedin-rt__osint-fofa-manual-btn");
+    var fofaManualInput = root.querySelector(".boxedin-rt__osint-fofa-input");
+    if (fofaManualBtn && fofaManualInput) {
+      fofaManualBtn.addEventListener("click", function () {
+        var val = fofaManualInput.value.trim();
+        if (val) openFofaSearch(val);
+      });
+      fofaManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = fofaManualInput.value.trim();
+          if (val) openFofaSearch(val);
+        }
+      });
+    }
+
+    var chBtn = root.querySelector(".boxedin-rt__osint-companieshouse-btn");
+    if (chBtn) {
+      chBtn.addEventListener("click", function () {
+        openCompaniesHouseSearch(chBtn.getAttribute("data-query"));
+      });
+    }
+
+    var chManualBtn = root.querySelector(".boxedin-rt__osint-companieshouse-manual-btn");
+    var chManualInput = root.querySelector(".boxedin-rt__osint-companieshouse-input");
+    if (chManualBtn && chManualInput) {
+      chManualBtn.addEventListener("click", function () {
+        var val = chManualInput.value.trim();
+        if (val) openCompaniesHouseSearch(val);
+      });
+      chManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = chManualInput.value.trim();
+          if (val) openCompaniesHouseSearch(val);
         }
       });
     }
