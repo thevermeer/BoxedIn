@@ -26,12 +26,43 @@
   var cachedBaseDomain = "";
   var cachedSourceMaps = [];
   var cachedProbeResults = null;
+  var cachedProbeContents = {};
+  var cachedProbeExpanded = {};
   var cachedDnsFindings = null;
   var cachedDnsDomain = "";
   var cachedCorsProbe = null;
   var exfilFilter = null;
+  var savedBodyScroll = 0;
 
   var repeaterRoot = null;
+
+  /** Google Fonts stylesheet URL (Montserrat 400–700); must match overlay CSS font-family. */
+  var FONT_MONTSERRAT_STYLESHEET =
+    "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap";
+
+  /**
+   * Inject Montserrat into the document head (preconnect + stylesheet) so the
+   * font loads even when host CSP blocks @import in extension CSS.
+   */
+  function injectMontserratFont() {
+    var id = "boxedin-font-montserrat";
+    if (document.getElementById(id)) return;
+    var head = document.head || document.documentElement;
+    var preGoogle = document.createElement("link");
+    preGoogle.rel = "preconnect";
+    preGoogle.href = "https://fonts.googleapis.com";
+    var preGstatic = document.createElement("link");
+    preGstatic.rel = "preconnect";
+    preGstatic.href = "https://fonts.gstatic.com";
+    preGstatic.crossOrigin = "";
+    var sheet = document.createElement("link");
+    sheet.id = id;
+    sheet.rel = "stylesheet";
+    sheet.href = FONT_MONTSERRAT_STYLESHEET;
+    head.appendChild(preGoogle);
+    head.appendChild(preGstatic);
+    head.appendChild(sheet);
+  }
 
   /* ── Page-guard stat flush ─────────────────────────────────────────── */
 
@@ -389,6 +420,28 @@
     } catch (e) { /* ignore */ }
   }
 
+  /** Open a Have I Been Pwned domain search page in a new tab. */
+  function openHIBPSearch(domain) {
+    if (!domain) return;
+    var url = "https://haveibeenpwned.com/DomainSearch?domain=" + encodeURIComponent(domain);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Open a DeHashed breach search for a domain in a new tab. */
+  function openDeHashedSearch(domain) {
+    if (!domain) return;
+    var url = "https://dehashed.com/search?query=domain%3A" + encodeURIComponent(domain);
+    try {
+      chrome.runtime.sendMessage({ type: "BOXEDIN_OPEN_TAB", url: url }, function () {
+        if (chrome.runtime.lastError) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
   /** Open a SecurityTrails DNS history lookup for a domain in a new tab. */
   function openSecurityTrailsSearch(domain) {
     if (!domain) return;
@@ -515,9 +568,8 @@
     }
     root.style.display = "";
 
-    var prevBodyScroll = 0;
     var bodyEl = root.querySelector(".boxedin-stats__body");
-    if (bodyEl) prevBodyScroll = bodyEl.scrollTop;
+    if (bodyEl) savedBodyScroll = bodyEl.scrollTop;
 
     root.className = "";
     if (isDarkUi()) root.classList.add("boxedin-stats--dark");
@@ -580,7 +632,12 @@
     if (redteamEnabled) wireTabs();
 
     var newBody = root.querySelector(".boxedin-stats__body");
-    if (newBody && prevBodyScroll) newBody.scrollTop = prevBodyScroll;
+    if (newBody) {
+      if (savedBodyScroll) newBody.scrollTop = savedBodyScroll;
+      newBody.addEventListener("scroll", function () {
+        savedBodyScroll = newBody.scrollTop;
+      });
+    }
   }
 
   /* ── Blocks panel ──────────────────────────────────────────────────── */
@@ -1594,13 +1651,26 @@
           var pr = found[pri];
           var prSev = pr.risk === "critical" ? "critical" : pr.risk === "high" ? "critical" : pr.risk === "medium" ? "warning" : "info";
           var prSevLabel = pr.risk.charAt(0).toUpperCase() + pr.risk.slice(1);
+          var cachedContent = cachedProbeContents[pr.path];
+          var isExpanded = cachedProbeExpanded[pr.path];
+          var contentHtml = '';
+          if (cachedContent) {
+            var display = isExpanded ? 'block' : 'none';
+            contentHtml =
+              '<div class="boxedin-rt__probe-content" data-for="' + escapeAttr(pr.path) + '" style="display:' + display + '">' +
+              '<p class="boxedin-rt__probe-content-meta">' + cachedContent.status + ' \u00b7 ' + escapeHtml(cachedContent.contentType) + '</p>' +
+              '<pre class="boxedin-rt__probe-content-body">' + escapeHtml(cachedContent.body) + '</pre>' +
+              '</div>';
+          } else {
+            contentHtml = '<div class="boxedin-rt__probe-content" data-for="' + escapeAttr(pr.path) + '"></div>';
+          }
           parts.push(
             '<div class="boxedin-rt__item">' +
             '<span class="boxedin-rt__badge boxedin-rt__badge--' + prSev + '">' + prSevLabel + '</span> ' +
             '<span class="boxedin-rt__item-label">' + escapeHtml(pr.path) + ' (' + pr.status + ')</span>' +
-            '<button type="button" class="boxedin-rt__probe-view-btn" data-path="' + escapeAttr(pr.path) + '" title="Fetch and view contents">\u{1F441}</button>' +
+            '<button type="button" class="boxedin-rt__probe-view-btn" data-path="' + escapeAttr(pr.path) + '" title="Fetch and view contents">' + (cachedContent ? (isExpanded ? '\u{1F441}\u{200D}\u{1F5E8}' : '\u{1F441}') : '\u{1F441}') + '</button>' +
             '<div class="boxedin-rt__item-detail">' + escapeHtml(pr.desc) + '</div>' +
-            '<div class="boxedin-rt__probe-content" data-for="' + escapeAttr(pr.path) + '"></div>' +
+            contentHtml +
             '</div>');
         }
       }
@@ -1750,37 +1820,33 @@
         btn.addEventListener("click", function () {
           var path = btn.getAttribute("data-path");
           if (!path) return;
+
+          if (cachedProbeContents[path]) {
+            cachedProbeExpanded[path] = !cachedProbeExpanded[path];
+            fetchReconAndRender();
+            return;
+          }
+
           var contentEl = root.querySelector('.boxedin-rt__probe-content[data-for="' + path.replace(/"/g, '\\"') + '"]');
-          if (!contentEl) return;
-          if (contentEl.style.display === "block") {
-            contentEl.style.display = "none";
-            return;
-          }
-          if (contentEl.getAttribute("data-loaded")) {
+          if (contentEl) {
+            contentEl.innerHTML = '<p class="boxedin-rt__none">Fetching\u2026</p>';
             contentEl.style.display = "block";
-            return;
           }
-          contentEl.innerHTML = '<p class="boxedin-rt__none">Fetching\u2026</p>';
-          contentEl.style.display = "block";
           var url = window.location.origin + path;
           try {
             chrome.runtime.sendMessage({ type: "BOXEDIN_FETCH_PATH_CONTENT", url: url }, function (response) {
-              if (chrome.runtime.lastError || !response) {
-                contentEl.innerHTML = '<p class="boxedin-rt__none">Failed to fetch.</p>';
-                return;
-              }
-              contentEl.setAttribute("data-loaded", "1");
+              if (chrome.runtime.lastError || !response) return;
               var ct = response.contentType || "";
               var body = response.body || "";
-              var headerHtml = '<div class="boxedin-rt__probe-content-meta">HTTP ' +
-                (response.status || "?") + ' | ' + escapeHtml(ct.split(";")[0]) +
-                ' | ' + body.length + ' bytes</div>';
-              contentEl.innerHTML = headerHtml +
-                '<pre class="boxedin-rt__probe-content-body">' + escapeHtml(body) + '</pre>';
+              cachedProbeContents[path] = {
+                status: "HTTP " + (response.status || "?"),
+                contentType: ct.split(";")[0],
+                body: body
+              };
+              cachedProbeExpanded[path] = true;
+              fetchReconAndRender();
             });
-          } catch (e) {
-            contentEl.innerHTML = '<p class="boxedin-rt__none">Error.</p>';
-          }
+          } catch (e) { /* ignore */ }
         });
       })(viewBtns[vi]);
     }
@@ -2384,6 +2450,56 @@
 
     parts.push('</div>');
 
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">Have I Been Pwned — Domain Breach Search</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Check what data breaches have affected accounts on a domain. Domain verification may be required for full results.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-hibp-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">Search Breaches</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-hibp-input" placeholder="example.com" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-hibp-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
+    parts.push('<div class="boxedin-rt__group"><div class="boxedin-rt__group-head">DeHashed — Breach &amp; Credential Search</div>');
+    parts.push(
+      '<p class="boxedin-rt__osint-hint">' +
+      'Search leaked databases for breached credentials and data associated with a domain. Free search preview; full results require an account.' +
+      '</p>');
+
+    if (pageDomain) {
+      parts.push(
+        '<div class="boxedin-rt__osint-search">' +
+        '<code>' + escapeHtml(pageDomain) + '</code> ' +
+        '<button type="button" class="boxedin-rt__osint-dehashed-btn" data-domain="' +
+        escapeAttr(pageDomain) + '">Search DeHashed</button>' +
+        '</div>');
+    } else {
+      parts.push('<p class="boxedin-rt__none">No page domain available.</p>');
+    }
+
+    parts.push(
+      '<div class="boxedin-rt__osint-manual">' +
+      '<input type="text" class="boxedin-rt__osint-dehashed-input" placeholder="example.com" spellcheck="false" />' +
+      '<button type="button" class="boxedin-rt__osint-dehashed-manual-btn">Search</button>' +
+      '</div>');
+
+    parts.push('</div>');
+
     renderShell(parts.join(""));
     wireOsintPanel();
   }
@@ -2665,6 +2781,50 @@
         }
       });
     }
+
+    var hibpBtn = root.querySelector(".boxedin-rt__osint-hibp-btn");
+    if (hibpBtn) {
+      hibpBtn.addEventListener("click", function () {
+        openHIBPSearch(hibpBtn.getAttribute("data-domain"));
+      });
+    }
+    var hibpManualBtn = root.querySelector(".boxedin-rt__osint-hibp-manual-btn");
+    var hibpManualInput = root.querySelector(".boxedin-rt__osint-hibp-input");
+    if (hibpManualBtn && hibpManualInput) {
+      hibpManualBtn.addEventListener("click", function () {
+        var val = hibpManualInput.value.trim();
+        if (val) openHIBPSearch(val);
+      });
+      hibpManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = hibpManualInput.value.trim();
+          if (val) openHIBPSearch(val);
+        }
+      });
+    }
+
+    var dhBtn = root.querySelector(".boxedin-rt__osint-dehashed-btn");
+    if (dhBtn) {
+      dhBtn.addEventListener("click", function () {
+        openDeHashedSearch(dhBtn.getAttribute("data-domain"));
+      });
+    }
+    var dhManualBtn = root.querySelector(".boxedin-rt__osint-dehashed-manual-btn");
+    var dhManualInput = root.querySelector(".boxedin-rt__osint-dehashed-input");
+    if (dhManualBtn && dhManualInput) {
+      dhManualBtn.addEventListener("click", function () {
+        var val = dhManualInput.value.trim();
+        if (val) openDeHashedSearch(val);
+      });
+      dhManualInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var val = dhManualInput.value.trim();
+          if (val) openDeHashedSearch(val);
+        }
+      });
+    }
   }
 
   /* ── Fetch stats (blocks panel) ────────────────────────────────────── */
@@ -2917,6 +3077,7 @@
    */
   function mount() {
     if (document.getElementById("boxedin-block-stats-root")) return;
+    injectMontserratFont();
     root = document.createElement("div");
     root.id = "boxedin-block-stats-root";
     root.setAttribute("role", "complementary");

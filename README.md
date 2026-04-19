@@ -346,9 +346,9 @@ The file is named `boxedin-report-YYYY-MM-DD.json`.
 
 ### OSINT Tab
 
-Integrates with twelve public OSINT search engines — **crt.sh**, **Shodan**, **WHOIS**, the **Wayback Machine**, **Intelligence X**, **urlscan.io**, **Censys**, **Domain Dossier**, **PhishTank**, **FOFA**, **Companies House**, and **SecurityTrails** — to perform external reconnaissance on domains and hosts. Searches open in a new browser tab; no API keys or accounts are required for basic lookups.
+Integrates with fourteen public OSINT search engines — **crt.sh**, **Shodan**, **WHOIS**, the **Wayback Machine**, **Intelligence X**, **urlscan.io**, **Censys**, **Domain Dossier**, **PhishTank**, **FOFA**, **Companies House**, **SecurityTrails**, **Have I Been Pwned**, and **DeHashed** — to perform external reconnaissance on domains and hosts. Searches open in a new browser tab; no API keys or accounts are required for basic lookups.
 
-The OSINT panel is divided into twelve sections:
+The OSINT panel is divided into fourteen sections:
 
 **crt.sh — Certificate Transparency**
 
@@ -421,6 +421,18 @@ The OSINT panel is divided into twelve sections:
 - **One-click search** — the current page's domain is shown with a "View DNS History" button that opens `https://securitytrails.com/domain/<domain>/dns` in a new tab.
 - **Manual domain input** — a text field for searching arbitrary domains.
 - SecurityTrails provides historical DNS records, WHOIS changes, associated domains, subdomain enumeration, and hosting history. The free tier allows limited lookups. Useful for tracking infrastructure changes, discovering related domains, finding previous IP addresses, and identifying hosting patterns over time. Complements the built-in DNS Security Audit with historical perspective.
+
+**Have I Been Pwned — Domain Breach Search**
+
+- **One-click search** — the current page's domain is shown with a "Search Breaches" button that opens `https://haveibeenpwned.com/DomainSearch?domain=<domain>` in a new tab.
+- **Manual domain input** — a text field for searching arbitrary domains.
+- Have I Been Pwned is the gold standard for data-breach lookups. The domain search shows which breaches have affected email accounts under a given domain. Domain ownership verification may be required for full results, but the landing page provides a useful starting point for assessing breach exposure.
+
+**DeHashed — Breach & Credential Search**
+
+- **One-click search** — the current page's domain is shown with a "Search DeHashed" button that opens `https://dehashed.com/search?query=domain:<domain>` in a new tab.
+- **Manual domain input** — a text field for searching arbitrary domains.
+- DeHashed aggregates billions of leaked records from data breaches, allowing you to search for breached credentials, emails, names, and other data associated with a domain. A free search preview is available; full results require an account. Useful for identifying credential exposure, assessing breach impact, and informing password-reset campaigns.
 
 In addition to the dedicated tab, search icons appear inline across other panels:
 
