@@ -35,6 +35,9 @@
   var savedBodyScroll = 0;
 
   var repeaterRoot = null;
+  /** True after the user closes the overlay for this page load; stays hidden until navigation. */
+  var overlayDismissed = false;
+  var pollTimerId = null;
 
   /** Google Fonts stylesheet URL (Montserrat 400–700); must match overlay CSS font-family. */
   var FONT_MONTSERRAT_STYLESHEET =
@@ -285,6 +288,13 @@
     } catch (e) { /* ignore */ }
   }
 
+  /** Signal page-guard to stop red-team observation hooks (exfil, scans, etc.). */
+  function disablePageGuardRedteam() {
+    try {
+      window.postMessage({ source: "boxedin-overlay", type: "disable-redteam" }, "*");
+    } catch (e) { /* ignore */ }
+  }
+
   /* ── Tab management ────────────────────────────────────────────────── */
 
   /** Switch the active overlay tab, persist choice, and re-render. */
@@ -455,6 +465,7 @@
 
   /** Dispatch a fetch-and-render cycle for whichever tab is active. */
   function renderActivePanel() {
+    if (overlayDismissed) return;
     if (activeTab === "blocks") fetchStats();
     else if (activeTab === "auth") fetchAuthAndRender();
     else if (activeTab === "exfil") fetchExfilAndRender();
@@ -492,6 +503,54 @@
       var maximized = viewState === "maximized";
       btn.textContent = maximized ? "\u25A3" : "\u25A1";
       btn.setAttribute("title", maximized ? "Restore" : "Maximize");
+    });
+  }
+
+  /** Hide the overlay and repeater for this page; clears the poll timer. */
+  function dismissOverlay() {
+    overlayDismissed = true;
+    closeRepeater();
+    if (pollTimerId !== null) {
+      clearInterval(pollTimerId);
+      pollTimerId = null;
+    }
+    if (root) root.style.display = "none";
+  }
+
+  /** Bind the close (X) control in the overlay header. */
+  function wireDismissOverlay() {
+    var btn = root.querySelector(".boxedin-stats__dismiss");
+    if (!btn) return;
+    btn.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      dismissOverlay();
+    });
+  }
+
+  /** Bind Red team checkbox — same `redteamEnabled` storage key as the options page. */
+  function wireRedteamToggle() {
+    var cb = root.querySelector(".boxedin-stats__redteam-cb");
+    if (!cb) return;
+    cb.addEventListener("change", function () {
+      var on = cb.checked;
+      var patch = {};
+      patch[STORAGE_REDTEAM_ENABLED] = on;
+      if (!on) {
+        patch[STORAGE_ACTIVE_TAB] = "blocks";
+        activeTab = "blocks";
+      }
+      try {
+        chrome.storage.local.set(patch, function () {
+          if (chrome.runtime.lastError) return;
+          redteamEnabled = on;
+          if (on) {
+            enablePageGuardRedteam();
+          } else {
+            disablePageGuardRedteam();
+          }
+          renderActivePanel();
+        });
+      } catch (e) { /* ignore */ }
     });
   }
 
@@ -566,6 +625,10 @@
       root.style.display = "none";
       return;
     }
+    if (overlayDismissed) {
+      root.style.display = "none";
+      return;
+    }
     root.style.display = "";
 
     var bodyEl = root.querySelector(".boxedin-stats__body");
@@ -579,6 +642,10 @@
     var maximized = viewState === "maximized";
 
     var headerActions = "";
+    headerActions +=
+      '<label class="boxedin-stats__redteam-label" title="Red-team analysis (Auth, Exfil, Recon, etc.). Synced with the options page.">' +
+      '<input type="checkbox" class="boxedin-stats__redteam-cb"' + (redteamEnabled ? " checked" : "") + " />" +
+      "<span>RT</span></label>";
     if (activeTab === "blocks") {
       headerActions += '<button type="button" class="boxedin-stats__reset-stats" title="Clear cumulative DNR and page-guard block counts (this browser)">Reset stats</button>';
     }
@@ -593,7 +660,8 @@
       '<button type="button" class="boxedin-stats__toggle" title="' +
       (collapsed ? "Expand" : "Collapse") + '" aria-expanded="' +
       (collapsed ? "false" : "true") + '">' +
-      (collapsed ? "\u25B2" : "\u25BC") + "</button>";
+      (collapsed ? "\u25B2" : "\u25BC") + "</button>" +
+      '<button type="button" class="boxedin-stats__dismiss" title="Hide overlay on this page until reload" aria-label="Close overlay">\u2715</button>';
 
     var tabsHtml = "";
     if (redteamEnabled) {
@@ -627,6 +695,8 @@
 
     wireToggle();
     wireMaximize();
+    wireDismissOverlay();
+    wireRedteamToggle();
     wireOpenRepeater();
     wireExportFindings();
     if (redteamEnabled) wireTabs();
@@ -3095,8 +3165,8 @@
       if (areaName !== "local") return;
       if (changes.extensionEnabled) {
         if (changes.extensionEnabled.newValue === false) {
-          root.style.display = "none";
-        } else {
+          if (root) root.style.display = "none";
+        } else if (!overlayDismissed) {
           renderActivePanel();
         }
       }
@@ -3110,6 +3180,7 @@
           enablePageGuardRedteam();
         } else {
           activeTab = "blocks";
+          disablePageGuardRedteam();
         }
         renderActivePanel();
       }
@@ -3142,7 +3213,7 @@
       renderActivePanel();
     });
 
-    window.setInterval(function () { renderActivePanel(); }, POLL_MS);
+    pollTimerId = window.setInterval(function () { renderActivePanel(); }, POLL_MS);
   }
 
   if (document.body) {

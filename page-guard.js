@@ -897,12 +897,15 @@
 
   window.addEventListener("message", function (ev) {
     try {
-      if (ev.data && ev.data.source === "boxedin-overlay" && ev.data.type === "enable-redteam") {
+      if (!ev.data || ev.data.source !== "boxedin-overlay") return;
+      if (ev.data.type === "enable-redteam") {
         var g = ensureGuard();
         if (!g.redteamEnabled) {
           g.redteamEnabled = true;
           runRedteamScans();
         }
+      } else if (ev.data.type === "disable-redteam") {
+        ensureGuard().redteamEnabled = false;
       }
     } catch (e) { /* ignore */ }
   });
@@ -2045,6 +2048,8 @@
         var g2 = ensureGuard();
         g2.redteamEnabled = true;
         runRedteamScans();
+      } else if (data.type === "disable-redteam") {
+        ensureGuard().redteamEnabled = false;
       }
     } catch (e) { /* ignore */ }
   });
